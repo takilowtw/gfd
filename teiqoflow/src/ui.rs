@@ -264,7 +264,7 @@ fn combo<T: PartialEq + Clone>(ui: &mut Ui, id: &str, width: f32, value: &mut T,
 
 impl eframe::App for App {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        [0.0, 0.0, 0.0, 0.0]
+        BG.to_normalized_gamma_f32()
     }
 
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
@@ -277,9 +277,9 @@ impl eframe::App for App {
         let mut cfg = self.shared.cfg();
         let before = cfg.clone();
 
-        // Rounded window background.
+        // Windows 11 rounds the corners and draws the border itself (see main.rs).
         let full = ctx.content_rect();
-        ui.painter().rect(full.shrink(0.5), 16.0, BG, Stroke::new(1.0, BORDER), egui::StrokeKind::Inside);
+        ui.painter().rect_filled(full, 0.0, BG);
 
         egui::Panel::left("sidebar")
             .exact_size(220.0)

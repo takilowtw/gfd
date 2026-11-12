@@ -1,0 +1,46 @@
+[package]
+name = "teiqoflow"
+version = "1.0.0"
+edition = "2024"
+description = "Push-to-talk dictation with instant translation"
+
+[features]
+default = ["whisper"]
+whisper = ["dep:whisper-rs"]
+# GPU acceleration; needs the CUDA Toolkit installed when building.
+cuda = ["whisper", "whisper-rs/cuda"]
+
+[dependencies]
+ab_glyph = "0.2.32"
+arboard = "3.7.0"
+cpal = "0.18.2"
+crossbeam-channel = "0.5.17"
+dirs = "7.0.0"
+eframe = { version = "0.37.0", default-features = false, features = ["glow", "default_fonts"] }
+egui = "0.37.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tiny-skia = "0.12.0"
+tray-icon = "0.26.1"
+ureq = { version = "3.5.2", default-features = false, features = ["native-tls", "json"] }
+whisper-rs = { version = "0.16.0", optional = true }
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+    "Win32_Media_Audio",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_HiDpi",
+    "Win32_System_SystemInformation",
+] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+strip = true
+
+# whisper.cpp is unusably slow without optimisations, even in debug builds.
+[profile.dev.package."*"]
+opt-level = 3

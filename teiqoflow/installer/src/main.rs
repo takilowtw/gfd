@@ -273,10 +273,11 @@ impl eframe::App for Setup {
         window_background(ui);
         let full = ctx.content_rect();
 
-        // Soft blue glow in the top-left corner, behind the content.
+        // Soft blue glow in the top-left corner, behind the content. Its largest circle must stay
+        // clear of the rounded corner (about 142px away), or it paints the transparent area outside.
         for i in 0..14 {
-            let r = 40.0 + i as f32 * 14.0;
-            ui.painter().circle_filled(full.left_top() + vec2(70.0, 70.0), r, Color32::from_rgba_unmultiplied(0x25, 0x63, 0xEB, 3));
+            let r = 30.0 + i as f32 * 8.0;
+            ui.painter().circle_filled(full.left_top() + vec2(110.0, 100.0), r, Color32::from_rgba_unmultiplied(0x25, 0x63, 0xEB, 3));
         }
 
         // Drag anywhere on the background to move the window.

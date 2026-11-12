@@ -294,8 +294,10 @@ pub fn window_background(ui: &Ui) {
     let ctx = ui.ctx();
     let full = ctx.content_rect();
     let ppp = ctx.pixels_per_point();
-    // The top pixel row is clipped away (see clip_window_corners), so start one pixel lower.
-    let shape = Rect::from_min_max(full.min + vec2(0.0, 1.0 / ppp), full.max);
+    // The drawing area starts one pixel below the window's top edge (winit keeps that row for the
+    // system frame), so its last pixel row falls outside the window. End the shape one row early
+    // or the bottom border is cut off.
+    let shape = Rect::from_min_max(full.min, full.max - vec2(0.0, 1.0 / ppp));
     ui.painter().rect(shape, WINDOW_RADIUS, bg(), Stroke::new(1.0, border()), egui::StrokeKind::Inside);
 
     // Re-clip whenever the physical size or scale changes.
@@ -354,7 +356,9 @@ fn clip_window_corners(radius_px: f32) -> bool {
         }
         // CreateRoundRectRgn takes the ellipse diameter, so this is a radius of radius_px / 2.
         let d = radius_px.round() as i32;
-        let rgn = CreateRoundRectRgn(0, 1, r.right - r.left + 1, r.bottom - r.top + 1, d, d);
+        // Round-rect regions come out a pixel short on the right and bottom, which cut off the
+        // bottom border; overshooting the window is harmless.
+        let rgn = CreateRoundRectRgn(0, 1, r.right - r.left + 2, r.bottom - r.top + 2, d, d);
         if rgn.is_null() {
             return false;
         }

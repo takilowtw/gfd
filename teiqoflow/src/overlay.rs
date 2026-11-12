@@ -132,8 +132,8 @@ fn run(shared: Arc<Shared>) {
             }
 
             let target = if visible { 1.0 } else { 0.0 };
-            // Quick to appear, gentler to fade away (about half a second).
-            let rate = if visible { 0.22 } else { 0.09 };
+            // Quick to appear, a touch softer to fade away (about a quarter of a second).
+            let rate = if visible { 0.22 } else { 0.18 };
             anim.alpha += (target - anim.alpha) * rate;
             if !visible && anim.alpha < 0.02 {
                 anim.alpha = 0.0;

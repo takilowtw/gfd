@@ -73,6 +73,88 @@ fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
         .inner
 }
 
+/// Typing at about 40 words a minute versus speaking at about 150.
+fn time_saved(words: usize) -> String {
+    let minutes = (words as f32 * (1.0 / 40.0 - 1.0 / 150.0)).round() as usize;
+    if minutes < 60 {
+        format!("{minutes} {}", t("min"))
+    } else {
+        format!("{} {} {} {}", minutes / 60, t("h"), minutes % 60, t("min"))
+    }
+}
+
+/// Today's date as (year, month, day) in local time.
+fn today() -> (i32, u32, u32) {
+    use windows_sys::Win32::System::SystemInformation::GetLocalTime;
+    let mut st = unsafe { std::mem::zeroed() };
+    unsafe { GetLocalTime(&mut st) };
+    (st.wYear as i32, st.wMonth as u32, st.wDay as u32)
+}
+
+fn previous_day((y, m, d): (i32, u32, u32)) -> (i32, u32, u32) {
+    if d > 1 {
+        return (y, m, d - 1);
+    }
+    let (y, m) = if m == 1 { (y - 1, 12) } else { (y, m - 1) };
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let last = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m as usize - 1];
+    (y, m, last)
+}
+
+/// 0 = Monday (Sakamoto's method).
+fn weekday((y, m, d): (i32, u32, u32)) -> usize {
+    const T: [i32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+    let y = if m < 3 { y - 1 } else { y };
+    let sunday_based = (y + y / 4 - y / 100 + y / 400 + T[m as usize - 1] + d as i32).rem_euclid(7);
+    ((sunday_based + 6) % 7) as usize
+}
+
+/// Column chart of words dictated on each of the last seven days, today on the right.
+fn week_chart(ui: &mut Ui, history: &[crate::config::HistoryItem]) {
+    const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    let mut days = [today(); 7];
+    for i in (0..6).rev() {
+        days[i] = previous_day(days[i + 1]);
+    }
+    // History times look like "12.11 23:40" (day.month, no year).
+    let counts: Vec<usize> = days
+        .iter()
+        .map(|&(_, m, d)| {
+            let prefix = format!("{d:02}.{m:02} ");
+            history.iter().filter(|h| h.time.starts_with(&prefix)).map(|h| h.result.split_whitespace().count()).sum()
+        })
+        .collect();
+    let max = counts.iter().copied().max().unwrap_or(0).max(1) as f32;
+
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 130.0), Sense::hover());
+    let label_h = 18.0;
+    let value_h = 18.0;
+    let plot = Rect::from_min_max(rect.min + vec2(0.0, value_h), rect.max - vec2(0.0, label_h));
+    let slot = rect.width() / 7.0;
+    let bar_w = (slot * 0.42).min(34.0);
+    let painter = ui.painter();
+    for (i, (&count, &day)) in counts.iter().zip(&days).enumerate() {
+        let cx = rect.left() + slot * (i as f32 + 0.5);
+        // Bars grow into place when the page opens or the numbers change.
+        let target = count as f32 / max;
+        let k = ui.ctx().animate_value_with_time(ui.make_persistent_id(("week_bar", i)), target, 0.35);
+        let track = Rect::from_center_size(pos2(cx, plot.center().y), vec2(bar_w, plot.height()));
+        painter.rect_filled(track, bar_w / 2.0, panel_2());
+        let h = (plot.height() * k).max(if count > 0 { bar_w } else { 0.0 });
+        if h > 0.5 {
+            let bar = Rect::from_min_max(pos2(track.left(), plot.bottom() - h), track.max);
+            gradient_rect(ui, bar, bar_w / 2.0, accent_2(), accent_1());
+        }
+        let is_today = i == 6;
+        if count > 0 {
+            painter.text(pos2(cx, plot.bottom() - h - 4.0), egui::Align2::CENTER_BOTTOM, count.to_string(), semibold(12.0), text_color());
+        }
+        let color = if is_today { text_color() } else { muted_color() };
+        let font = if is_today { semibold(12.0) } else { FontId::proportional(12.0) };
+        painter.text(pos2(cx, rect.bottom()), egui::Align2::CENTER_BOTTOM, t(DAYS[weekday(day)]), font, color);
+    }
+}
+
 fn caption(ui: &mut Ui, text: &str) {
     ui.label(RichText::new(text.to_lowercase()).font(semibold(11.0)).color(muted_color()).extra_letter_spacing(1.0));
 }
@@ -330,13 +412,20 @@ impl App {
         ui.add_space(6.0);
 
         let words: usize = cfg.history.iter().map(|h| h.result.split_whitespace().count()).sum();
-        ui.columns(2, |cols| {
-            for (col, (title, value)) in cols.iter_mut().zip([(t("Words dictated"), words), (t("Dictations"), cfg.history.len())]) {
+        let stats = [(t("Words dictated"), words.to_string()), (t("Dictations"), cfg.history.len().to_string()), (t("Time saved"), time_saved(words))];
+        ui.columns(3, |cols| {
+            for (col, (title, value)) in cols.iter_mut().zip(stats) {
                 card(col, |ui| {
                     caption(ui, title);
-                    ui.label(RichText::new(value.to_string()).font(serif(36.0)));
+                    ui.label(RichText::new(value).font(serif(36.0)));
                 });
             }
+        });
+        ui.add_space(6.0);
+
+        card(ui, |ui| {
+            caption(ui, t("Last 7 days"));
+            week_chart(ui, &cfg.history);
         });
         ui.add_space(6.0);
 

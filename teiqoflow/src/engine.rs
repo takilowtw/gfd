@@ -130,7 +130,7 @@ fn process(shared: &Shared, engine: &Engine, samples: &[f32]) {
     let mut dst = src.clone();
     if cfg.translate && !languages::same_language(&src, &cfg.target_lang) {
         shared.set_phase(Phase::Processing("Translating".into()));
-        match translate::translate(&text, &cfg.target_lang) {
+        match translate::translate(&text, &src, &cfg.target_lang) {
             Ok(t) => {
                 result = t;
                 dst = cfg.target_lang.clone();

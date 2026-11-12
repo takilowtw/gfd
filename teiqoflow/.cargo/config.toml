@@ -1,0 +1,11 @@
+# whisper.cpp is built by CMake. With MSVC it otherwise ends up without /O2 and without AVX2
+# (GGML_NATIVE can't detect CPU features under MSVC), which makes recognition ~20x slower.
+# These target any CPU from ~2015 onwards (Haswell / Ryzen).
+[env]
+GGML_NATIVE = "OFF"
+GGML_AVX = "ON"
+GGML_AVX2 = "ON"
+GGML_FMA = "ON"
+GGML_F16C = "ON"
+CMAKE_C_FLAGS_RELEASE = "/O2 /Ob2 /DNDEBUG"
+CMAKE_CXX_FLAGS_RELEASE = "/O2 /Ob2 /DNDEBUG"

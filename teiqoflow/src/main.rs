@@ -99,8 +99,10 @@ fn transcribe_file(path: &str, target: &str) -> Result<(), String> {
     let started = std::time::Instant::now();
     let (text, lang) = engine.transcribe(&audio, "auto")?;
     let stt_ms = started.elapsed().as_millis();
-    let translated = translate::translate(&text, target)?;
-    println!("model: {model}\ndetected: {lang}\ntranscribed in {stt_ms} ms\ntext: {text}\n{target}: {translated}");
+    let started = std::time::Instant::now();
+    let translated = translate::translate(&text, &lang, target)?;
+    let tr_ms = started.elapsed().as_millis();
+    println!("model: {model}\ndetected: {lang}\ntranscribed in {stt_ms} ms, translated in {tr_ms} ms\ntext: {text}\n{target}: {translated}");
     Ok(())
 }
 

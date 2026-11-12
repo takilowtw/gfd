@@ -123,10 +123,14 @@ impl Engine {
         }
     }
 
-    /// Returns (text, detected language code).
+    /// Returns (text, detected language code). "auto" means unknown; the translator then detects it.
     pub fn transcribe(&mut self, audio: &[f32], language: &str) -> Result<(String, String), String> {
         match self {
-            Engine::GigaAm(g) => Ok((g.transcribe(audio)?, "ru".into())),
+            Engine::GigaAm(g) => {
+                let text = g.transcribe(audio)?;
+                let lang = script_language(&text).to_string();
+                Ok((text, lang))
+            }
             #[cfg(feature = "whisper")]
             Engine::Whisper(ctx) => whisper_transcribe(ctx, audio, language),
         }
@@ -185,4 +189,13 @@ fn clean(text: &str) -> String {
         }
     }
     out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// GigaAM has no language detection and spells non-Russian words in Latin letters, so the
+/// language is taken from the script: mostly Cyrillic is Russian, otherwise let the translator
+/// detect it.
+fn script_language(text: &str) -> &'static str {
+    let cyrillic = text.chars().filter(|c| ('\u{0400}'..='\u{04FF}').contains(c)).count();
+    let latin = text.chars().filter(|c| c.is_ascii_alphabetic()).count();
+    if cyrillic >= latin { "ru" } else { "auto" }
 }

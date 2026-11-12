@@ -11,11 +11,14 @@ has focus. A small animated pill at the bottom of the screen shows when it is li
 Requirements on Windows: Rust (MSVC toolchain), Visual Studio C++ Build Tools, CMake and LLVM.
 
 ```
-cargo build --release
+powershell -ExecutionPolicy Bypass -File build.ps1
 target\release\teiqoflow.exe
 ```
 
-The first build compiles whisper.cpp and takes a few minutes. Optional NVIDIA GPU acceleration needs the
+`build.ps1` compiles whisper.cpp with clang-cl and Ninja (`winget install Ninja-build.Ninja`), which makes
+recognition much faster than a plain `cargo build`. The first build takes a few minutes.
+To check recognition and translation without a microphone:
+`target\release\teiqoflow.exe --transcribe some.wav en | more` Optional NVIDIA GPU acceleration needs the
 CUDA Toolkit and `cargo build --release --features cuda`.
 
 ## Use

@@ -256,7 +256,7 @@ fn draw(pm: &mut Pixmap, text: &TextRenderer, phase: &Phase, anim: &Anim, s: f32
                 let stroke = Stroke { width: 2.2, line_cap: LineCap::Round, ..Stroke::default() };
                 pm.stroke_path(&p, &paint(Shader::SolidColor(Color::from_rgba8(11, 11, 16, 255))), &stroke, id, None);
             }
-            let shown = text.elide(msg, 14.0, w - 70.0);
+            let shown = text.elide(&msg.to_lowercase(), 14.0, w - 70.0);
             text.draw(pm, &shown, (x + 48.0) * s, cy * s, 14.0 * s, [0xED, 0xED, 0xF3, 255]);
         }
         Phase::Idle => {}

@@ -12,11 +12,18 @@ pub fn is_russian() -> bool {
     RUSSIAN.load(Ordering::Relaxed)
 }
 
+/// Translated and lowercased: the interface is styled all-lowercase.
 pub fn t(en: &'static str) -> &'static str {
-    if !is_russian() {
-        return en;
-    }
-    RU.iter().find(|(k, _)| *k == en).map(|(_, v)| *v).unwrap_or(en)
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<HashMap<(bool, &'static str), &'static str>>> = OnceLock::new();
+    let ru = is_russian();
+    let mut cache = CACHE.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    cache.entry((ru, en)).or_insert_with(|| {
+        let s = if ru { RU.iter().find(|(k, _)| *k == en).map(|(_, v)| *v).unwrap_or(en) } else { en };
+        // Leaked once per distinct string; the set is small and fixed.
+        Box::leak(s.to_lowercase().into_boxed_str())
+    })
 }
 
 /// `t` for templates containing `{}` placeholders, filled in order.
@@ -117,4 +124,5 @@ const RU: &[(&str, &str)] = &[
     // Tray
     ("Open teiqoflow", "Открыть teiqoflow"),
     ("Quit", "Выход"),
+    ("MB", "МБ"),
 ];

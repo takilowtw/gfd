@@ -84,8 +84,10 @@ impl Engine {
     pub fn transcribe(&self, audio: &[f32], language: &str) -> Result<(String, String), String> {
         use whisper_rs::{FullParams, SamplingStrategy};
         let mut state = self.ctx.create_state().map_err(|e| e.to_string())?;
-        let mut params = FullParams::new(SamplingStrategy::BeamSearch { beam_size: 5, patience: -1.0 });
-        let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(8);
+        // Greedy decoding is several times faster than beam search, which matters for push-to-talk.
+        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        // One thread per physical core; hyper-threads only add contention for whisper.cpp.
+        let threads = (std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8) / 2).clamp(2, 8);
         params.set_n_threads(threads as i32);
         let lang = if language == "auto" { "auto" } else { crate::languages::whisper_code(language) };
         params.set_language(Some(lang));

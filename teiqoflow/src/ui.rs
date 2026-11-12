@@ -330,7 +330,7 @@ impl App {
         }
         let btn = |ui: &mut Ui, x: f32, label: &str, hover: Color32| -> bool {
             let r = Rect::from_center_size(pos2(x, rect.center().y), vec2(36.0, 28.0));
-            let resp = ui.interact(r, egui::Id::new("titlebar").with(label), Sense::click());
+            let resp = ui.interact(r, ui.make_persistent_id(label), Sense::click());
             if resp.hovered() {
                 ui.painter().rect_filled(r, 8.0, hover);
             }
@@ -378,16 +378,20 @@ impl App {
                 .corner_radius(CornerRadius::same(12))
                 .inner_margin(Margin::same(12))
                 .show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    caption(ui, "Engine");
-                    ui.horizontal_top(|ui| {
-                        let color = match level {
-                            StatusLevel::Ok => OK,
-                            StatusLevel::Busy => WARN,
-                            StatusLevel::Error => ERR,
-                        };
-                        ui.label(RichText::new("●").color(color).size(11.0));
-                        ui.add(egui::Label::new(RichText::new(text).size(12.5).color(MUTED)).wrap());
+                    let w = ui.available_width();
+                    // A top-down child keeps the card compact inside the bottom-up sidebar footer.
+                    ui.allocate_ui_with_layout(vec2(w, 0.0), Layout::top_down(Align::Min), |ui| {
+                        ui.set_width(w);
+                        caption(ui, "Engine");
+                        ui.horizontal_top(|ui| {
+                            let color = match level {
+                                StatusLevel::Ok => OK,
+                                StatusLevel::Busy => WARN,
+                                StatusLevel::Error => ERR,
+                            };
+                            ui.label(RichText::new("●").color(color).size(11.0));
+                            ui.add(egui::Label::new(RichText::new(text).size(12.5).color(MUTED)).wrap());
+                        });
                     });
                 });
         });

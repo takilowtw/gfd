@@ -69,7 +69,51 @@ fn build_tray(shared: Arc<Shared>) -> Option<tray_icon::TrayIcon> {
     TrayIconBuilder::new().with_menu(Box::new(menu)).with_tooltip(TITLE).with_icon(icon).build().ok()
 }
 
+/// `teiqoflow.exe --transcribe <file.wav> [target-lang]`: runs a 16-bit PCM WAV file through
+/// recognition and translation and prints the result. Useful for checking the engine without a mic.
+fn transcribe_file(path: &str, target: &str) -> Result<(), String> {
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let (mut channels, mut rate, mut data) = (1usize, 16_000u32, &bytes[0..0]);
+    let mut i = 12;
+    while i + 8 <= bytes.len() {
+        let id = &bytes[i..i + 4];
+        let len = u32::from_le_bytes(bytes[i + 4..i + 8].try_into().unwrap()) as usize;
+        let body = &bytes[i + 8..(i + 8 + len).min(bytes.len())];
+        if id == b"fmt " {
+            channels = u16::from_le_bytes([body[2], body[3]]) as usize;
+            rate = u32::from_le_bytes(body[4..8].try_into().unwrap());
+        } else if id == b"data" {
+            data = body;
+        }
+        i += 8 + len + (len & 1);
+    }
+    let mono: Vec<f32> = data
+        .chunks_exact(2 * channels)
+        .map(|f| f.chunks_exact(2).map(|s| i16::from_le_bytes([s[0], s[1]]) as f32 / 32768.0).sum::<f32>() / channels as f32)
+        .collect();
+    let audio = audio::resample(&mono, rate, audio::TARGET_SR);
+
+    let shared = Shared::new(config::Config::load());
+    let model = shared.cfg().model;
+    let engine = stt::Engine::load(&stt::ensure_model(&model, &shared)?)?;
+    let started = std::time::Instant::now();
+    let (text, lang) = engine.transcribe(&audio, "auto")?;
+    let stt_ms = started.elapsed().as_millis();
+    let translated = translate::translate(&text, target)?;
+    println!("model: {model}\ndetected: {lang}\ntranscribed in {stt_ms} ms\ntext: {text}\n{target}: {translated}");
+    Ok(())
+}
+
 fn main() -> eframe::Result {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("--transcribe") {
+        let target = args.get(3).map(String::as_str).unwrap_or("en");
+        if let Err(e) = transcribe_file(args.get(2).map(String::as_str).unwrap_or(""), target) {
+            println!("error: {e}");
+        }
+        return Ok(());
+    }
+
     let cfg = config::Config::load();
     let model = cfg.model.clone();
     let shared = Arc::new(Shared::new(cfg));

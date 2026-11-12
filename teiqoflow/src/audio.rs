@@ -99,7 +99,7 @@ fn build<T: SizedSample + Send + 'static>(
         .map_err(|e| e.to_string())
 }
 
-fn resample(input: &[f32], from: u32, to: u32) -> Vec<f32> {
+pub fn resample(input: &[f32], from: u32, to: u32) -> Vec<f32> {
     if from == to || input.is_empty() {
         return input.to_vec();
     }

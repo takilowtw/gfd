@@ -13,6 +13,7 @@ mod overlay;
 mod sound;
 mod state;
 mod stt;
+mod style;
 mod text;
 mod translate;
 mod ui;
@@ -40,27 +41,6 @@ fn show_main_window(shared: &Shared) {
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         ctx.request_repaint();
-    }
-}
-
-/// Lets Windows 11 round the borderless window and draw a thin border in the app's colour,
-/// which looks smoother than drawing the rounded frame ourselves.
-fn style_window_frame() {
-    use windows_sys::Win32::Graphics::Dwm::{
-        DWMWA_BORDER_COLOR, DWMWA_USE_IMMERSIVE_DARK_MODE, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
-    };
-    let title: Vec<u16> = TITLE.encode_utf16().chain(Some(0)).collect();
-    unsafe {
-        let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
-        if hwnd.is_null() {
-            return;
-        }
-        let set = |attr: i32, value: u32| {
-            DwmSetWindowAttribute(hwnd, attr as u32, &value as *const u32 as *const _, 4);
-        };
-        set(DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND as u32);
-        set(DWMWA_USE_IMMERSIVE_DARK_MODE, 1);
-        set(DWMWA_BORDER_COLOR, 0x0033_2626); // COLORREF is 0x00BBGGRR: #262633
     }
 }
 
@@ -165,7 +145,7 @@ fn main() -> eframe::Result {
             .with_inner_size(ui::initial_size())
             .with_min_inner_size(egui::vec2(820.0, 560.0))
             .with_decorations(false)
-            .with_transparent(false)
+            .with_transparent(true)
             .with_resizable(false)
             .with_icon(Arc::new(icon)),
         centered: true,
@@ -177,7 +157,7 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             let _ = shared.egui.set(cc.egui_ctx.clone());
-            style_window_frame();
+            style::disable_system_frame(TITLE);
             // Started here so the process is already DPI-aware when the overlay measures the screen.
             overlay::spawn(shared.clone());
             let tray = build_tray(shared.clone());

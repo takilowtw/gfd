@@ -3,6 +3,7 @@ name = "teiqoflow"
 version = "1.0.0"
 edition = "2024"
 description = "Push-to-talk dictation with instant translation"
+build = "build.rs"
 
 [features]
 default = ["whisper"]
@@ -48,3 +49,9 @@ strip = true
 # whisper.cpp is unusably slow without optimisations, even in debug builds.
 [profile.dev.package."*"]
 opt-level = 3
+
+[build-dependencies]
+winresource = "0.1.34"
+
+[workspace]
+members = ["installer"]

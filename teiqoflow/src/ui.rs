@@ -8,26 +8,13 @@ use crate::i18n::{t, tf};
 use crate::stt::{Kind, MODELS, is_downloaded, model_info};
 use crossbeam_channel::Sender;
 use egui::{
-    Align, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Frame, Layout, Margin, Mesh, Pos2, Rect,
+    Align, Color32, CornerRadius, FontId, Frame, Layout, Margin, Rect,
     RichText, Sense, Stroke, Ui, Vec2, ViewportCommand, pos2, vec2,
 };
 use std::sync::Arc;
 
-pub const BG: Color32 = Color32::from_rgb(0x0B, 0x0B, 0x10);
-pub const PANEL: Color32 = Color32::from_rgb(0x14, 0x14, 0x1C);
-pub const PANEL_2: Color32 = Color32::from_rgb(0x1B, 0x1B, 0x26);
-pub const BORDER: Color32 = Color32::from_rgb(0x26, 0x26, 0x33);
-pub const TEXT: Color32 = Color32::from_rgb(0xED, 0xED, 0xF3);
-pub const MUTED: Color32 = Color32::from_rgb(0x8B, 0x8B, 0x9E);
-pub const ACCENT_1: Color32 = Color32::from_rgb(0x25, 0x63, 0xEB);
-pub const ACCENT_2: Color32 = Color32::from_rgb(0x38, 0xBD, 0xF8);
-pub const OK: Color32 = Color32::from_rgb(0x3D, 0xDC, 0x97);
-pub const WARN: Color32 = Color32::from_rgb(0xFF, 0xB5, 0x47);
-pub const ERR: Color32 = Color32::from_rgb(0xFF, 0x5C, 0x70);
+use crate::style::*;
 
-fn semibold(size: f32) -> FontId {
-    FontId::new(size, FontFamily::Name("semibold".into()))
-}
 
 #[derive(PartialEq, Clone, Copy)]
 enum Page {
@@ -54,115 +41,7 @@ impl App {
     }
 }
 
-fn setup_style(ctx: &egui::Context) {
-    let mut fonts = FontDefinitions::default();
-    let dir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".into()) + "\\Fonts\\";
-    let mut fallbacks = Vec::new();
-    for (name, file) in [
-        ("segoe", "segoeui.ttf"),
-        ("segoe-sb", "seguisb.ttf"),
-        ("segoe-sym", "seguisym.ttf"),
-        ("yahei", "msyh.ttc"),
-        ("yugothic", "YuGothM.ttc"),
-        ("malgun", "malgun.ttf"),
-        ("nirmala", "Nirmala.ttc"),
-        ("nirmala2", "Nirmala.ttf"),
-    ] {
-        if let Ok(bytes) = std::fs::read(format!("{dir}{file}")) {
-            fonts.font_data.insert(name.into(), Arc::new(FontData::from_owned(bytes)));
-            if !matches!(name, "segoe" | "segoe-sb") {
-                fallbacks.push(name.to_string());
-            }
-        }
-    }
-    let has = |n: &str| fonts.font_data.contains_key(n);
-    let regular = if has("segoe") { "segoe" } else { "" };
-    let bold = if has("segoe-sb") { "segoe-sb" } else { regular };
 
-    let default_prop = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
-    let mut prop: Vec<String> = Vec::new();
-    if !regular.is_empty() {
-        prop.push(regular.into());
-    }
-    prop.extend(fallbacks.iter().cloned());
-    prop.extend(default_prop.iter().cloned());
-    let mut sb: Vec<String> = Vec::new();
-    if !bold.is_empty() {
-        sb.push(bold.into());
-    }
-    sb.extend(prop.iter().cloned());
-    fonts.families.insert(FontFamily::Proportional, prop);
-    fonts.families.insert(FontFamily::Name("semibold".into()), sb);
-    ctx.set_fonts(fonts);
-
-    let mut style = (*ctx.global_style()).clone();
-    style.spacing.item_spacing = vec2(10.0, 10.0);
-    style.spacing.button_padding = vec2(14.0, 8.0);
-    style.spacing.interact_size.y = 34.0;
-    style.text_styles.insert(egui::TextStyle::Body, FontId::proportional(14.0));
-    style.text_styles.insert(egui::TextStyle::Button, semibold(14.0));
-    let v = &mut style.visuals;
-    *v = egui::Visuals::dark();
-    v.panel_fill = Color32::TRANSPARENT;
-    v.window_fill = PANEL_2;
-    v.window_stroke = Stroke::new(1.0, BORDER);
-    v.window_corner_radius = CornerRadius::same(10);
-    v.extreme_bg_color = PANEL_2;
-    v.override_text_color = Some(TEXT);
-    v.selection.bg_fill = ACCENT_1;
-    v.selection.stroke = Stroke::new(1.0, TEXT);
-    v.hyperlink_color = ACCENT_1;
-    for w in [&mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.open] {
-        w.corner_radius = CornerRadius::same(10);
-        w.bg_fill = PANEL_2;
-        w.weak_bg_fill = PANEL_2;
-        w.bg_stroke = Stroke::new(1.0, BORDER);
-        w.fg_stroke = Stroke::new(1.2, TEXT);
-    }
-    v.widgets.hovered.bg_stroke = Stroke::new(1.0, ACCENT_1);
-    v.widgets.active.bg_stroke = Stroke::new(1.0, ACCENT_2);
-    v.widgets.open.bg_stroke = Stroke::new(1.0, ACCENT_1);
-    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, BORDER);
-    v.widgets.noninteractive.fg_stroke = Stroke::new(1.0, TEXT);
-    ctx.set_global_style(style);
-}
-
-// ------------------------------------------------------------------ drawing helpers
-
-fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
-    let l = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
-    Color32::from_rgba_unmultiplied(l(a.r(), b.r()), l(a.g(), b.g()), l(a.b(), b.b()), l(a.a(), b.a()))
-}
-
-/// Rounded rectangle filled with a diagonal two-colour gradient.
-fn gradient_rect(ui: &Ui, rect: Rect, radius: f32, c0: Color32, c1: Color32) {
-    let r = radius.min(rect.width() / 2.0).min(rect.height() / 2.0);
-    let mut pts: Vec<Pos2> = Vec::new();
-    let corners = [
-        (pos2(rect.right() - r, rect.top() + r), -90.0f32),
-        (pos2(rect.right() - r, rect.bottom() - r), 0.0),
-        (pos2(rect.left() + r, rect.bottom() - r), 90.0),
-        (pos2(rect.left() + r, rect.top() + r), 180.0),
-    ];
-    for (c, start) in corners {
-        for i in 0..=8 {
-            let a = (start + i as f32 * 90.0 / 8.0).to_radians();
-            pts.push(c + vec2(a.cos(), a.sin()) * r);
-        }
-    }
-    let diag = rect.width() + rect.height();
-    let color_at = |p: Pos2| lerp_color(c0, c1, ((p.x - rect.left()) + (p.y - rect.top())) / diag);
-    let mut mesh = Mesh::default();
-    mesh.colored_vertex(rect.center(), color_at(rect.center()));
-    for p in &pts {
-        mesh.colored_vertex(*p, color_at(*p));
-    }
-    let n = pts.len() as u32;
-    for i in 0..n {
-        mesh.add_triangle(0, 1 + i, 1 + (i + 1) % n);
-    }
-    ui.painter().add(egui::Shape::mesh(mesh));
-}
 
 fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     Frame::new()
@@ -197,41 +76,6 @@ fn keycap(ui: &mut Ui, text: &str, size: f32) {
     p.galley(top.min + pad, galley, TEXT);
 }
 
-fn primary_button(ui: &mut Ui, text: &str) -> egui::Response {
-    let galley = ui.painter().layout_no_wrap(text.to_string(), semibold(14.0), Color32::WHITE);
-    let (rect, resp) = ui.allocate_exact_size(galley.size() + vec2(36.0, 18.0), Sense::click());
-    let k = if resp.hovered() { 1.0 } else { 0.0 };
-    let c0 = lerp_color(ACCENT_1, Color32::from_rgb(0x3B, 0x76, 0xF6), k);
-    let c1 = lerp_color(ACCENT_2, Color32::from_rgb(0x5C, 0xCB, 0xFA), k);
-    gradient_rect(ui, rect, 10.0, c0, c1);
-    ui.painter().galley(rect.center() - galley.size() / 2.0, galley, Color32::WHITE);
-    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
-}
-
-fn ghost_button(ui: &mut Ui, text: &str) -> egui::Response {
-    ui.add(egui::Button::new(RichText::new(text).font(semibold(13.0))).fill(PANEL_2).corner_radius(10))
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
-}
-
-fn toggle(ui: &mut Ui, on: &mut bool) -> egui::Response {
-    let size = vec2(46.0, 26.0);
-    let (rect, mut resp) = ui.allocate_exact_size(size, Sense::click());
-    if resp.clicked() {
-        *on = !*on;
-        resp.mark_changed();
-    }
-    let t = ui.ctx().animate_bool(resp.id, *on);
-    let p = ui.painter();
-    p.rect_filled(rect, 13.0, PANEL_2);
-    p.rect_stroke(rect, 13.0, Stroke::new(1.0, BORDER), egui::StrokeKind::Inside);
-    if t > 0.01 {
-        let a = |c: Color32| Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), (t * 255.0) as u8);
-        gradient_rect(ui, rect, 13.0, a(ACCENT_1), a(ACCENT_2));
-    }
-    let x = rect.left() + 13.0 + t * (rect.width() - 26.0);
-    ui.painter().circle_filled(pos2(x, rect.center().y), 10.0, Color32::WHITE);
-    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
-}
 
 fn setting_row(ui: &mut Ui, title: &str, subtitle: &str, control: impl FnOnce(&mut Ui)) {
     ui.horizontal(|ui| {
@@ -264,7 +108,7 @@ fn combo<T: PartialEq + Clone>(ui: &mut Ui, id: &str, width: f32, value: &mut T,
 
 impl eframe::App for App {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        BG.to_normalized_gamma_f32()
+        [0.0, 0.0, 0.0, 0.0]
     }
 
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
@@ -277,9 +121,9 @@ impl eframe::App for App {
         let mut cfg = self.shared.cfg();
         let before = cfg.clone();
 
-        // Windows 11 rounds the corners and draws the border itself (see main.rs).
+        // Frameless transparent window: we draw one smooth rounded edge ourselves.
         let full = ctx.content_rect();
-        ui.painter().rect_filled(full, 0.0, BG);
+        window_background(ui);
 
         egui::Panel::left("sidebar")
             .exact_size(220.0)
@@ -414,9 +258,9 @@ impl App {
         let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(28.0, 24.0))).layout(Layout::top_down(Align::Min)));
         caption(&mut inner, t("Push to talk"));
         inner.horizontal(|ui| {
-            ui.label(RichText::new(t("Hold")).font(semibold(26.0)));
+            ui.label(RichText::new(t("Hold")).font(serif(32.0)));
             keycap(ui, &combo_name(&cfg.hotkey).to_lowercase(), 16.0);
-            ui.label(RichText::new(t("and speak")).font(semibold(26.0)));
+            ui.label(RichText::new(t("and speak")).font(serif_italic(32.0)));
         });
         muted(&mut inner, t("Release the key — your words are transcribed, translated and typed into whatever chat or text field your cursor is in."));
         ui.add_space(6.0);
@@ -460,7 +304,7 @@ impl App {
             for (col, (title, value)) in cols.iter_mut().zip([(t("Words dictated"), words), (t("Dictations"), cfg.history.len())]) {
                 card(col, |ui| {
                     caption(ui, title);
-                    ui.label(RichText::new(value.to_string()).font(semibold(30.0)));
+                    ui.label(RichText::new(value.to_string()).font(serif(36.0)));
                 });
             }
         });
@@ -482,7 +326,7 @@ impl App {
 
     fn history(&mut self, ui: &mut Ui, cfg: &Config) {
         ui.horizontal(|ui| {
-            ui.label(RichText::new(t("History")).font(semibold(26.0)));
+            ui.label(RichText::new(t("History")).font(serif(32.0)));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if !cfg.history.is_empty() && ghost_button(ui, t("Clear")).clicked() {
                     let mut g = lock(&self.shared.cfg);
@@ -516,7 +360,7 @@ impl App {
     }
 
     fn settings(&mut self, ui: &mut Ui, cfg: &mut Config) {
-        ui.label(RichText::new(t("Settings")).font(semibold(26.0)));
+        ui.label(RichText::new(t("Settings")).font(serif(32.0)));
         ui.add_space(4.0);
 
         card(ui, |ui| {

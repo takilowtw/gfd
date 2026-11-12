@@ -35,4 +35,25 @@ if ($env:VULKAN_SDK -and (Test-Path $env:VULKAN_SDK)) {
     Write-Host 'Vulkan SDK not found: building CPU-only (winget install KhronosGroup.VulkanSDK for GPU).'
     cargo build --release
 }
-exit $LASTEXITCODE
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+# Installer: bundles the app plus the Visual C++ runtime so it runs on PCs without it.
+$payload = Join-Path $PSScriptRoot 'target\payload'
+Remove-Item $payload -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory $payload | Out-Null
+Copy-Item 'target\release\teiqoflow.exe' $payload
+$crt = Get-ChildItem "$vs\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT" -Directory | Sort-Object FullName | Select-Object -Last 1
+if ($crt) {
+    foreach ($dll in 'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'msvcp140_1.dll') {
+        Copy-Item (Join-Path $crt.FullName $dll) $payload -ErrorAction SilentlyContinue
+    }
+} else {
+    Write-Warning 'Visual C++ runtime not found; the installer will rely on the one on the target PC.'
+}
+$env:TEIQOFLOW_PAYLOAD = $payload
+cargo build --release -p teiqoflow-setup
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+New-Item -ItemType Directory 'dist' -Force | Out-Null
+Copy-Item 'target\release\teiqoflow-setup.exe' 'dist\teiqoflow-setup.exe' -Force
+Write-Host "Installer: $(Resolve-Path 'dist\teiqoflow-setup.exe')"
+exit 0

@@ -8,10 +8,13 @@ pub struct TextRenderer {
 }
 
 impl TextRenderer {
-    /// Loads Segoe UI Semibold plus fallbacks for scripts it doesn't cover.
+    /// Loads the bundled Figtree/Onest SemiBold, then system fonts for scripts they don't cover.
     pub fn load() -> Self {
         let dir = std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".into()) + "\\Fonts\\";
-        let mut fonts = Vec::new();
+        let mut fonts: Vec<FontVec> = crate::style::UI_SEMIBOLD
+            .iter()
+            .filter_map(|b| FontVec::try_from_vec(b.to_vec()).ok())
+            .collect();
         for (file, index) in [
             ("seguisb.ttf", 0),
             ("segoeui.ttf", 0),

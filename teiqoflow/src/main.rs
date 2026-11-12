@@ -98,13 +98,17 @@ fn transcribe_file(path: &str, target: &str) -> Result<(), String> {
     let engine = stt::Engine::load(&stt::ensure_model(&model, &shared)?)?;
     let started = std::time::Instant::now();
     let (text, lang) = engine.transcribe(&audio, "auto")?;
-    let stt_ms = started.elapsed().as_millis();
+    let cold_ms = started.elapsed().as_millis();
+    // Second run shows the steady-state latency the app has once the model is warm.
+    let started = std::time::Instant::now();
+    let (text, lang) = engine.transcribe(&audio, "auto").unwrap_or((text, lang));
+    let stt_ms = format!("{} ms (first run {cold_ms} ms) for {:.1} s of audio", started.elapsed().as_millis(), audio.len() as f32 / 16_000.0);
     let started = std::time::Instant::now();
     let translated = translate::translate(&text, &lang, target)?;
     let tr_ms = started.elapsed().as_millis();
     #[cfg(feature = "whisper")]
     println!("system: {}", whisper_rs::print_system_info());
-    println!("model: {model}\ndetected: {lang}\ntranscribed in {stt_ms} ms, translated in {tr_ms} ms\ntext: {text}\n{target}: {translated}");
+    println!("model: {model}\ndetected: {lang}\ntranscribed in {stt_ms}, translated in {tr_ms} ms\ntext: {text}\n{target}: {translated}");
     Ok(())
 }
 

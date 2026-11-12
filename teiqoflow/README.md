@@ -18,7 +18,9 @@ target\release\teiqoflow.exe
 `build.ps1` compiles whisper.cpp with clang-cl and Ninja (`winget install Ninja-build.Ninja`), which makes
 recognition much faster than a plain `cargo build`. The first build takes a few minutes.
 To check recognition and translation without a microphone:
-`target\release\teiqoflow.exe --transcribe some.wav en | more` Optional NVIDIA GPU acceleration needs the
+`target\release\teiqoflow.exe --transcribe some.wav en | more`
+
+Optional NVIDIA GPU acceleration needs the
 CUDA Toolkit and `cargo build --release --features cuda`.
 
 ## Use

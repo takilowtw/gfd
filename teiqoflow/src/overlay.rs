@@ -4,7 +4,7 @@
 //! chat you are dictating into keeps the cursor. It runs on its own thread so it keeps
 //! animating while the main window is hidden in the tray.
 
-use crate::icon::{gradient, paint, rounded_rect};
+use crate::icon::{gradient_between, paint, rounded_rect};
 use crate::state::{Phase, Shared};
 use crate::text::TextRenderer;
 use std::collections::VecDeque;
@@ -182,6 +182,12 @@ fn run(shared: Arc<Shared>) {
     }
 }
 
+/// Gradient in the accent colour picked in settings.
+fn gradient(x0: f32, y0: f32, x1: f32, y1: f32, alpha: f32) -> Shader<'static> {
+    let rgb = |c: egui::Color32| (c.r(), c.g(), c.b());
+    gradient_between(rgb(crate::style::accent_1()), rgb(crate::style::accent_2()), x0, y0, x1, y1, alpha)
+}
+
 fn draw(pm: &mut Pixmap, text: &TextRenderer, phase: &Phase, anim: &Anim, s: f32) {
     let t = anim.start.elapsed().as_secs_f32();
     let id = Transform::from_scale(s, s);
@@ -207,10 +213,7 @@ fn draw(pm: &mut Pixmap, text: &TextRenderer, phase: &Phase, anim: &Anim, s: f32
     let cy = y + h / 2.0;
     match phase {
         Phase::Listening => {
-            let pulse = 0.6 + 0.4 * (t * 6.0).sin();
-            circle(pm, x + 27.0, cy, 11.0, Color::from_rgba8(255, 80, 110, (70.0 * pulse) as u8), id);
-            circle(pm, x + 27.0, cy, 6.0, Color::from_rgba8(0xFF, 0x5C, 0x70, 255), id);
-            let left = x + 50.0;
+            let left = x + 22.0;
             let right = x + w - 22.0;
             let step = (right - left) / BARS as f32;
             let bw = 3.6;
@@ -230,8 +233,10 @@ fn draw(pm: &mut Pixmap, text: &TextRenderer, phase: &Phase, anim: &Anim, s: f32
         }
         Phase::Processing(label) => {
             text.draw(pm, label, (x + 26.0) * s, cy * s, 14.0 * s, [0xED, 0xED, 0xF3, 255]);
-            let colors = [(0x25, 0x63, 0xEB), (0x2E, 0x90, 0xF2), (0x38, 0xBD, 0xF8)];
-            for (i, (r, g, b)) in colors.into_iter().enumerate() {
+            let (c0, c1) = (crate::style::accent_1(), crate::style::accent_2());
+            for i in 0..3 {
+                let c = crate::style::lerp_color(c0, c1, i as f32 / 2.0);
+                let (r, g, b) = (c.r(), c.g(), c.b());
                 let a = 0.3 + 0.7 * (t * 6.0 - i as f32 * 0.7).sin().max(0.0);
                 circle(pm, x + w - 60.0 + i as f32 * 15.0, cy - 3.0 * a, 4.0, Color::from_rgba8(r, g, b, (a * 255.0) as u8), id);
             }

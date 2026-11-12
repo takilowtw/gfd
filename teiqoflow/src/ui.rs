@@ -34,6 +34,7 @@ pub struct App {
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, shared: Arc<Shared>, engine: Sender<EngineMsg>, tray: Option<tray_icon::TrayIcon>) -> Self {
+        set_accent(&shared.cfg().accent);
         setup_style(&cc.egui_ctx);
         let rgba = crate::icon::app_icon_rgba(96);
         let logo = cc.egui_ctx.load_texture("logo", egui::ColorImage::from_rgba_unmultiplied([96, 96], &rgba), egui::TextureOptions::LINEAR);
@@ -210,7 +211,7 @@ impl App {
             }
             if selected {
                 let bar = Rect::from_min_size(rect.left_top() + vec2(0.0, 10.0), vec2(3.0, 20.0));
-                gradient_rect(ui, bar, 1.5, ACCENT_1, ACCENT_2);
+                gradient_rect(ui, bar, 1.5, accent_1(), accent_2());
             }
             let color = if selected || resp.hovered() { TEXT } else { MUTED };
             ui.painter().text(rect.left_center() + vec2(16.0, 0.0), egui::Align2::LEFT_CENTER, icon, FontId::proportional(16.0), color);
@@ -252,11 +253,11 @@ impl App {
     }
 
     fn home(&mut self, ui: &mut Ui, cfg: &mut Config) {
-        // Hero card.
+        // Hero card, tinted with the accent colour.
         let hero_h = 150.0;
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), hero_h), Sense::hover());
-        gradient_rect(ui, rect, 20.0, Color32::from_rgb(0x12, 0x22, 0x4D), Color32::from_rgb(0x0B, 0x2B, 0x45));
-        ui.painter().rect_stroke(rect, 20.0, Stroke::new(1.0, Color32::from_rgb(0x23, 0x3E, 0x7A)), egui::StrokeKind::Inside);
+        gradient_rect(ui, rect, 20.0, lerp_color(BG, accent_1(), 0.25), lerp_color(BG, accent_2(), 0.2));
+        ui.painter().rect_stroke(rect, 20.0, Stroke::new(1.0, lerp_color(BG, accent_1(), 0.45)), egui::StrokeKind::Inside);
         let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(28.0, 24.0))).layout(Layout::top_down(Align::Min)));
         caption(&mut inner, t("Push to talk"));
         inner.horizontal(|ui| {
@@ -371,6 +372,24 @@ impl App {
                 let opts = vec![("ru".to_string(), "русский".to_string()), ("en".to_string(), "english".to_string())];
                 combo(ui, "ui_lang", 200.0, &mut cfg.ui_lang, &opts);
             });
+            ui.add_space(4.0);
+            setting_row(ui, t("Accent color"), "", |ui| {
+                // Right-to-left layout, so iterate in reverse to keep the preset order.
+                for &(id, name, c0, c1) in ACCENTS.iter().rev() {
+                    let (rect, resp) = ui.allocate_exact_size(vec2(28.0, 28.0), Sense::click());
+                    let selected = cfg.accent == id;
+                    if selected || resp.hovered() {
+                        let ring = if selected { TEXT } else { MUTED };
+                        ui.painter().circle_stroke(rect.center(), 13.0, Stroke::new(1.5, ring));
+                    }
+                    gradient_rect(ui, rect.shrink(4.0), 10.0, c0, c1);
+                    if resp.on_hover_text(t(name)).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() && !selected {
+                        cfg.accent = id.to_string();
+                        set_accent(id);
+                        apply_visuals(ui.ctx());
+                    }
+                }
+            });
         });
         ui.add_space(6.0);
 
@@ -386,7 +405,7 @@ impl App {
             let waiting = capture == Capture::Waiting;
             setting_row(ui, t("Push-to-talk key"), t("Hold to record, release to type. Esc cancels."), |ui| {
                 if waiting {
-                    ui.label(RichText::new(t("Press keys…")).font(semibold(14.0)).color(ACCENT_2));
+                    ui.label(RichText::new(t("Press keys…")).font(semibold(14.0)).color(accent_2()));
                 } else {
                     if primary_button(ui, t("Change")).clicked() {
                         *lock(&self.shared.capture) = Capture::Waiting;

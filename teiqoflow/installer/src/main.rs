@@ -210,7 +210,7 @@ fn headline(ui: &mut Ui, upright: &str, italic: &str) {
         ui.spacing_mut().item_spacing.x = 8.0;
         ui.label(RichText::new(upright).font(serif(40.0)));
         if !italic.is_empty() {
-            ui.label(RichText::new(italic).font(serif_italic(40.0)).color(ACCENT_2));
+            ui.label(RichText::new(italic).font(serif_italic(40.0)).color(accent_2()));
         }
     });
 }
@@ -234,7 +234,7 @@ fn progress_bar(ui: &mut Ui, fraction: f32) {
     let shown = ui.ctx().animate_value_with_time(ui.make_persistent_id("progress"), fraction.clamp(0.0, 1.0), 0.25);
     if shown > 0.0 {
         let fill = Rect::from_min_size(rect.min, vec2((rect.width() * shown).max(10.0), rect.height()));
-        gradient_rect(ui, fill, 5.0, ACCENT_1, ACCENT_2);
+        gradient_rect(ui, fill, 5.0, accent_1(), accent_2());
         // A soft highlight sweeping across the filled part.
         let t = (ui.input(|i| i.time) as f32 * 0.8).fract();
         let x = fill.left() + fill.width() * t;

@@ -22,15 +22,19 @@ pub fn rounded_rect(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
 }
 
 pub fn gradient(x0: f32, y0: f32, x1: f32, y1: f32, alpha: f32) -> Shader<'static> {
+    gradient_between(ACCENT_1, ACCENT_2, x0, y0, x1, y1, alpha)
+}
+
+pub fn gradient_between(c0: (u8, u8, u8), c1: (u8, u8, u8), x0: f32, y0: f32, x1: f32, y1: f32, alpha: f32) -> Shader<'static> {
     let c = |(r, g, b): (u8, u8, u8)| Color::from_rgba8(r, g, b, (alpha * 255.0) as u8);
     LinearGradient::new(
         Point::from_xy(x0, y0),
         Point::from_xy(x1, y1),
-        vec![GradientStop::new(0.0, c(ACCENT_1)), GradientStop::new(1.0, c(ACCENT_2))],
+        vec![GradientStop::new(0.0, c(c0)), GradientStop::new(1.0, c(c1))],
         SpreadMode::Pad,
         Transform::identity(),
     )
-    .unwrap_or(Shader::SolidColor(c(ACCENT_1)))
+    .unwrap_or(Shader::SolidColor(c(c0)))
 }
 
 pub fn paint(shader: Shader<'static>) -> Paint<'static> {

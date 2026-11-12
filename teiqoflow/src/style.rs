@@ -3,6 +3,7 @@
 
 use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Mesh, Pos2, Rect, RichText, Sense, Stroke, Ui, pos2, vec2};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub const BG: Color32 = Color32::from_rgb(0x0B, 0x0B, 0x10);
 pub const PANEL: Color32 = Color32::from_rgb(0x14, 0x14, 0x1C);
@@ -10,11 +11,35 @@ pub const PANEL_2: Color32 = Color32::from_rgb(0x1B, 0x1B, 0x26);
 pub const BORDER: Color32 = Color32::from_rgb(0x26, 0x26, 0x33);
 pub const TEXT: Color32 = Color32::from_rgb(0xED, 0xED, 0xF3);
 pub const MUTED: Color32 = Color32::from_rgb(0x8B, 0x8B, 0x9E);
-pub const ACCENT_1: Color32 = Color32::from_rgb(0x25, 0x63, 0xEB);
-pub const ACCENT_2: Color32 = Color32::from_rgb(0x38, 0xBD, 0xF8);
 pub const OK: Color32 = Color32::from_rgb(0x3D, 0xDC, 0x97);
 pub const WARN: Color32 = Color32::from_rgb(0xFF, 0xB5, 0x47);
 pub const ERR: Color32 = Color32::from_rgb(0xFF, 0x5C, 0x70);
+
+/// Accent presets: id, English name, gradient start and end.
+pub const ACCENTS: &[(&str, &str, Color32, Color32)] = &[
+    ("blue", "Blue", Color32::from_rgb(0x25, 0x63, 0xEB), Color32::from_rgb(0x38, 0xBD, 0xF8)),
+    ("violet", "Violet", Color32::from_rgb(0x7C, 0x3A, 0xED), Color32::from_rgb(0xC0, 0x84, 0xFC)),
+    ("pink", "Pink", Color32::from_rgb(0xDB, 0x27, 0x77), Color32::from_rgb(0xF4, 0x72, 0xB6)),
+    ("red", "Red", Color32::from_rgb(0xDC, 0x26, 0x26), Color32::from_rgb(0xFB, 0x71, 0x85)),
+    ("orange", "Orange", Color32::from_rgb(0xEA, 0x58, 0x0C), Color32::from_rgb(0xFB, 0xBF, 0x24)),
+    ("green", "Green", Color32::from_rgb(0x05, 0x96, 0x69), Color32::from_rgb(0x4A, 0xDE, 0x80)),
+    ("teal", "Teal", Color32::from_rgb(0x0D, 0x94, 0x88), Color32::from_rgb(0x22, 0xD3, 0xEE)),
+];
+
+// Index into ACCENTS. Atomic because the overlay thread reads it too.
+static ACCENT: AtomicUsize = AtomicUsize::new(0);
+
+pub fn set_accent(id: &str) {
+    ACCENT.store(ACCENTS.iter().position(|a| a.0 == id).unwrap_or(0), Ordering::Relaxed);
+}
+
+pub fn accent_1() -> Color32 {
+    ACCENTS[ACCENT.load(Ordering::Relaxed)].2
+}
+
+pub fn accent_2() -> Color32 {
+    ACCENTS[ACCENT.load(Ordering::Relaxed)].3
+}
 
 /// Corner radius of the app and installer windows.
 pub const WINDOW_RADIUS: f32 = 16.0;
@@ -82,7 +107,11 @@ pub fn setup_style(ctx: &egui::Context) {
     fonts.families.insert(FontFamily::Name("serif".into()), family(&["garamond", "onest"]));
     fonts.families.insert(FontFamily::Name("serif-italic".into()), family(&["garamond-it", "garamond", "onest"]));
     ctx.set_fonts(fonts);
+    apply_visuals(ctx);
+}
 
+/// Spacing and colours. Called again when the accent colour changes.
+pub fn apply_visuals(ctx: &egui::Context) {
     let mut style = (*ctx.global_style()).clone();
     style.spacing.item_spacing = vec2(10.0, 10.0);
     style.spacing.button_padding = vec2(14.0, 8.0);
@@ -98,9 +127,9 @@ pub fn setup_style(ctx: &egui::Context) {
     v.menu_corner_radius = CornerRadius::same(12);
     v.extreme_bg_color = PANEL_2;
     v.override_text_color = Some(TEXT);
-    v.selection.bg_fill = ACCENT_1;
+    v.selection.bg_fill = accent_1();
     v.selection.stroke = Stroke::new(1.0, TEXT);
-    v.hyperlink_color = ACCENT_2;
+    v.hyperlink_color = accent_2();
     for w in [&mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.open] {
         w.corner_radius = CornerRadius::same(10);
         w.bg_fill = PANEL_2;
@@ -108,9 +137,9 @@ pub fn setup_style(ctx: &egui::Context) {
         w.bg_stroke = Stroke::new(1.0, BORDER);
         w.fg_stroke = Stroke::new(1.2, TEXT);
     }
-    v.widgets.hovered.bg_stroke = Stroke::new(1.0, ACCENT_1);
-    v.widgets.active.bg_stroke = Stroke::new(1.0, ACCENT_2);
-    v.widgets.open.bg_stroke = Stroke::new(1.0, ACCENT_1);
+    v.widgets.hovered.bg_stroke = Stroke::new(1.0, accent_1());
+    v.widgets.active.bg_stroke = Stroke::new(1.0, accent_2());
+    v.widgets.open.bg_stroke = Stroke::new(1.0, accent_1());
     v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, BORDER);
     v.widgets.noninteractive.fg_stroke = Stroke::new(1.0, TEXT);
     ctx.set_global_style(style);
@@ -169,8 +198,8 @@ pub fn primary_button(ui: &mut Ui, text: &str) -> egui::Response {
     let galley = ui.painter().layout_no_wrap(text.to_string(), semibold(14.0), Color32::WHITE);
     let (rect, resp) = ui.allocate_exact_size(galley.size() + vec2(36.0, 18.0), Sense::click());
     let k = ui.ctx().animate_bool(resp.id.with("hover"), resp.hovered());
-    let c0 = lerp_color(ACCENT_1, Color32::from_rgb(0x3B, 0x76, 0xF6), k);
-    let c1 = lerp_color(ACCENT_2, Color32::from_rgb(0x5C, 0xCB, 0xFA), k);
+    let c0 = lerp_color(accent_1(), Color32::WHITE, 0.15 * k);
+    let c1 = lerp_color(accent_2(), Color32::WHITE, 0.15 * k);
     gradient_rect(ui, rect, 10.0, c0, c1);
     ui.painter().galley(rect.center() - galley.size() / 2.0, galley, Color32::WHITE);
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -194,7 +223,7 @@ pub fn toggle(ui: &mut Ui, on: &mut bool) -> egui::Response {
     p.rect_stroke(rect, 13.0, Stroke::new(1.0, BORDER), egui::StrokeKind::Inside);
     if t > 0.01 {
         let a = |c: Color32| Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), (t * 255.0) as u8);
-        gradient_rect(ui, rect, 13.0, a(ACCENT_1), a(ACCENT_2));
+        gradient_rect(ui, rect, 13.0, a(accent_1()), a(accent_2()));
     }
     let x = rect.left() + 13.0 + t * (rect.width() - 26.0);
     ui.painter().circle_filled(pos2(x, rect.center().y), 10.0, Color32::WHITE);
@@ -203,9 +232,21 @@ pub fn toggle(ui: &mut Ui, on: &mut bool) -> egui::Response {
 
 /// Rounded window background for frameless, transparent windows.
 pub fn window_background(ui: &Ui) {
-    let full = ui.ctx().content_rect();
+    let ctx = ui.ctx();
+    let full = ctx.content_rect();
     ui.painter().rect(full, WINDOW_RADIUS, BG, Stroke::new(1.0, BORDER), egui::StrokeKind::Inside);
+
+    // Re-clip whenever the physical size or scale changes.
+    let ppp = ctx.pixels_per_point();
+    let key = [(full.width() * ppp).round(), (full.height() * ppp).round(), ppp];
+    let id = egui::Id::new("window_region");
+    if ctx.data(|d| d.get_temp::<[f32; 3]>(id)) != Some(key) && clip_window_corners(WINDOW_RADIUS * ppp) {
+        ctx.data_mut(|d| d.insert_temp(id, key));
+    }
 }
+
+#[cfg(windows)]
+static HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
 /// Tells Windows not to round, outline or shadow the window itself: the app draws its own rounded
 /// edge. A second system outline made the corners look doubled, and the system shadow follows the
@@ -223,6 +264,7 @@ pub fn disable_system_frame(title: &str) {
         if hwnd.is_null() {
             return;
         }
+        HWND.store(hwnd as isize, Ordering::Relaxed);
         let set = |attr: i32, value: u32| {
             DwmSetWindowAttribute(hwnd, attr as u32, &value as *const u32 as *const _, 4);
         };
@@ -230,4 +272,41 @@ pub fn disable_system_frame(title: &str) {
         set(DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE);
         set(DWMWA_NCRENDERING_POLICY, DWMNCRP_DISABLED as u32);
     }
+}
+
+/// Clips the window to a rounded shape. Windows 11 still draws a 1px frame line along the top of
+/// frameless windows, which showed as a square notch past the drawn corners; the region hides
+/// everything outside the rounded shape. Its radius is a little tighter than the drawn one so the
+/// anti-aliased edge pixels stay inside. Returns false until the window is known.
+#[cfg(windows)]
+fn clip_window_corners(radius_px: f32) -> bool {
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::Graphics::Gdi::{CreateRoundRectRgn, DeleteObject, SetWindowRgn};
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowRect;
+    let hwnd = HWND.load(Ordering::Relaxed) as windows_sys::Win32::Foundation::HWND;
+    if hwnd.is_null() {
+        return false;
+    }
+    unsafe {
+        let mut r: RECT = std::mem::zeroed();
+        if GetWindowRect(hwnd, &mut r) == 0 {
+            return false;
+        }
+        let d = (radius_px * 2.0).round() as i32 - 2;
+        let rgn = CreateRoundRectRgn(0, 0, r.right - r.left + 1, r.bottom - r.top + 1, d, d);
+        if rgn.is_null() {
+            return false;
+        }
+        // On success the system owns the region.
+        if SetWindowRgn(hwnd, rgn, 1) == 0 {
+            DeleteObject(rgn);
+            return false;
+        }
+    }
+    true
+}
+
+#[cfg(not(windows))]
+fn clip_window_corners(_radius_px: f32) -> bool {
+    true
 }

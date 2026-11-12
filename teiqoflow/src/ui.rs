@@ -370,31 +370,35 @@ impl App {
             }
         }
 
-        ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
-            let (text, level) = self.shared.status();
-            Frame::new()
-                .fill(PANEL)
-                .stroke(Stroke::new(1.0, BORDER))
-                .corner_radius(CornerRadius::same(12))
-                .inner_margin(Margin::same(12))
-                .show(ui, |ui| {
-                    let w = ui.available_width();
-                    // A top-down child keeps the card compact inside the bottom-up sidebar footer.
-                    ui.allocate_ui_with_layout(vec2(w, 0.0), Layout::top_down(Align::Min), |ui| {
-                        ui.set_width(w);
-                        caption(ui, "Engine");
-                        ui.horizontal_top(|ui| {
-                            let color = match level {
-                                StatusLevel::Ok => OK,
-                                StatusLevel::Busy => WARN,
-                                StatusLevel::Error => ERR,
-                            };
-                            ui.label(RichText::new("●").color(color).size(11.0));
-                            ui.add(egui::Label::new(RichText::new(text).size(12.5).color(MUTED)).wrap());
-                        });
-                    });
+        // Pin the status card to the bottom using its height from the previous frame.
+        let height_id = ui.make_persistent_id("engine_card_height");
+        let last_h: f32 = ui.data(|d| d.get_temp(height_id)).unwrap_or(78.0);
+        ui.add_space((ui.available_height() - last_h).max(0.0));
+        let (text, level) = self.shared.status();
+        let card = Frame::new()
+            .fill(PANEL)
+            .stroke(Stroke::new(1.0, BORDER))
+            .corner_radius(CornerRadius::same(12))
+            .inner_margin(Margin::same(12))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.spacing_mut().item_spacing.y = 4.0;
+                caption(ui, "Engine");
+                ui.horizontal_top(|ui| {
+                    let color = match level {
+                        StatusLevel::Ok => OK,
+                        StatusLevel::Busy => WARN,
+                        StatusLevel::Error => ERR,
+                    };
+                    ui.label(RichText::new("●").color(color).size(11.0));
+                    ui.add(egui::Label::new(RichText::new(text).size(12.5).color(MUTED)).wrap());
                 });
-        });
+            });
+        let h = card.response.rect.height();
+        if (h - last_h).abs() > 0.5 {
+            ui.data_mut(|d| d.insert_temp(height_id, h));
+            ui.ctx().request_repaint();
+        }
     }
 
     fn home(&mut self, ui: &mut Ui, cfg: &mut Config) {

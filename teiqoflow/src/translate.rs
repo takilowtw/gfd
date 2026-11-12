@@ -1,13 +1,13 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 use ureq::Agent;
-use ureq::tls::{TlsConfig, TlsProvider};
+use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
 
 pub fn agent() -> &'static Agent {
     static AGENT: OnceLock<Agent> = OnceLock::new();
     AGENT.get_or_init(|| {
         Agent::config_builder()
-            .tls_config(TlsConfig::builder().provider(TlsProvider::NativeTls).build())
+            .tls_config(TlsConfig::builder().provider(TlsProvider::NativeTls).root_certs(RootCerts::PlatformVerifier).build())
             .timeout_connect(Some(Duration::from_secs(10)))
             .build()
             .new_agent()

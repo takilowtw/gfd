@@ -132,7 +132,9 @@ fn run(shared: Arc<Shared>) {
             }
 
             let target = if visible { 1.0 } else { 0.0 };
-            anim.alpha += (target - anim.alpha) * 0.22;
+            // Quick to appear, gentler to fade away (about half a second).
+            let rate = if visible { 0.22 } else { 0.09 };
+            anim.alpha += (target - anim.alpha) * rate;
             if !visible && anim.alpha < 0.02 {
                 anim.alpha = 0.0;
                 if shown {
@@ -146,12 +148,13 @@ fn run(shared: Arc<Shared>) {
             let target_w = match &phase {
                 Phase::Error(t) => (text.width(t, 13.0) + 52.0).clamp(140.0, WIN_W - 40.0),
                 Phase::Processing(t) => (text.width(t, 13.0) + 66.0).clamp(LISTEN_W, WIN_W - 40.0),
-                Phase::Done(_) => anim.width,
+                // Settle back to the listening size while fading out.
+                Phase::Done(_) => LISTEN_W,
                 _ => LISTEN_W,
             };
             anim.width += (target_w - anim.width) * 0.25;
             anim.level += (shared.level() - anim.level) * 0.45;
-            if phase == Phase::Listening {
+            if matches!(phase, Phase::Listening | Phase::Done(_)) {
                 anim.levels.pop_front();
                 anim.levels.push_back(anim.level);
             }
@@ -209,13 +212,14 @@ fn draw(pm: &mut Pixmap, text: &TextRenderer, phase: &Phase, anim: &Anim, s: f32
     }
     let Some(pill) = rounded_rect(x, y, w, h, h / 2.0) else { return };
     pm.fill_path(&pill, &paint(Shader::SolidColor(Color::from_rgba8(16, 16, 22, 240))), FillRule::Winding, id, None);
-    let active = matches!(phase, Phase::Listening | Phase::Processing(_));
+    let active = matches!(phase, Phase::Listening | Phase::Processing(_) | Phase::Done(_));
     let border = if active { gradient(x, y, x + w, y, 0.9) } else { Shader::SolidColor(Color::from_rgba8(0x2E, 0x2E, 0x3D, 255)) };
     pm.stroke_path(&pill, &paint(border), &Stroke { width: 1.3, ..Stroke::default() }, id, None);
 
     let cy = y + h / 2.0;
     match phase {
-        Phase::Listening => {
+        // After a dictation the bars settle while the pill fades out.
+        Phase::Listening | Phase::Done(_) => {
             let left = x + 16.0;
             let right = x + w - 16.0;
             let step = (right - left) / BARS as f32;
@@ -259,8 +263,7 @@ fn draw(pm: &mut Pixmap, text: &TextRenderer, phase: &Phase, anim: &Anim, s: f32
             let shown = text.elide(&msg.to_lowercase(), 13.0, w - 46.0);
             text.draw(pm, &shown, (x + 32.0) * s, cy * s, 13.0 * s, [0xED, 0xED, 0xF3, 255]);
         }
-        // Fading out after a dictation: the empty pill only.
-        Phase::Done(_) | Phase::Idle => {}
+        Phase::Idle => {}
     }
 }
 

@@ -335,8 +335,9 @@ pub fn disable_system_frame(title: &str) {
 
 /// Clips the window to a rounded shape that also leaves out the top pixel row. Windows draws a 1px
 /// frame line along the top of frameless windows, and a shadow around the square bounds; both
-/// showed past the drawn corners. The region's radius is a little tighter than the drawn one so
-/// the anti-aliased edge pixels stay inside. Returns false until the window is known.
+/// showed past the drawn corners. Region edges are hard (no anti-aliasing), so the region uses half
+/// the drawn radius: its stair-stepped curve then runs a few pixels outside the app's smooth edge,
+/// through fully transparent pixels where it is invisible. Returns false until the window is known.
 #[cfg(windows)]
 fn clip_window_corners(radius_px: f32) -> bool {
     use windows_sys::Win32::Foundation::RECT;
@@ -351,7 +352,8 @@ fn clip_window_corners(radius_px: f32) -> bool {
         if GetWindowRect(hwnd, &mut r) == 0 {
             return false;
         }
-        let d = (radius_px * 2.0).round() as i32 - 2;
+        // CreateRoundRectRgn takes the ellipse diameter, so this is a radius of radius_px / 2.
+        let d = radius_px.round() as i32;
         let rgn = CreateRoundRectRgn(0, 1, r.right - r.left + 1, r.bottom - r.top + 1, d, d);
         if rgn.is_null() {
             return false;

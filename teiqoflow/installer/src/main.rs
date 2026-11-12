@@ -458,7 +458,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(TITLE)
-            .with_inner_size([640.0, 470.0])
+            .with_inner_size([640.0, 530.0])
             .with_decorations(false)
             .with_transparent(true)
             .with_resizable(false)

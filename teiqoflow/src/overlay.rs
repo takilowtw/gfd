@@ -230,7 +230,7 @@ fn draw(pm: &mut Pixmap, text: &TextRenderer, phase: &Phase, anim: &Anim, s: f32
         }
         Phase::Processing(label) => {
             text.draw(pm, label, (x + 26.0) * s, cy * s, 14.0 * s, [0xED, 0xED, 0xF3, 255]);
-            let colors = [(0x7C, 0x5C, 0xFF), (0xBD, 0x5C, 0xD5), (0xFF, 0x5C, 0xAA)];
+            let colors = [(0x25, 0x63, 0xEB), (0x2E, 0x90, 0xF2), (0x38, 0xBD, 0xF8)];
             for (i, (r, g, b)) in colors.into_iter().enumerate() {
                 let a = 0.3 + 0.7 * (t * 6.0 - i as f32 * 0.7).sin().max(0.0);
                 circle(pm, x + w - 60.0 + i as f32 * 15.0, cy - 3.0 * a, 4.0, Color::from_rgba8(r, g, b, (a * 255.0) as u8), id);

@@ -2,8 +2,8 @@ use tiny_skia::{
     Color, FillRule, GradientStop, LinearGradient, Paint, Path, PathBuilder, Pixmap, Point, Shader, SpreadMode, Transform,
 };
 
-pub const ACCENT_1: (u8, u8, u8) = (0x7C, 0x5C, 0xFF);
-pub const ACCENT_2: (u8, u8, u8) = (0xFF, 0x5C, 0xAA);
+pub const ACCENT_1: (u8, u8, u8) = (0x25, 0x63, 0xEB);
+pub const ACCENT_2: (u8, u8, u8) = (0x38, 0xBD, 0xF8);
 
 pub fn rounded_rect(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
     let r = r.min(w / 2.0).min(h / 2.0);

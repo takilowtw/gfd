@@ -3,7 +3,9 @@
 mod audio;
 mod config;
 mod engine;
+mod gigaam;
 mod hotkey;
+mod i18n;
 mod icon;
 mod languages;
 mod output;
@@ -15,6 +17,7 @@ mod text;
 mod translate;
 mod ui;
 
+use crate::i18n::t;
 use crate::state::Shared;
 use std::sync::Arc;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
@@ -42,8 +45,8 @@ fn show_main_window(shared: &Shared) {
 
 fn build_tray(shared: Arc<Shared>) -> Option<tray_icon::TrayIcon> {
     let menu = Menu::new();
-    let open = MenuItem::new("Open teiqoflow", true, None);
-    let quit = MenuItem::new("Quit", true, None);
+    let open = MenuItem::new(t("Open teiqoflow"), true, None);
+    let quit = MenuItem::new(t("Quit"), true, None);
     menu.append(&open).ok()?;
     menu.append(&PredefinedMenuItem::separator()).ok()?;
     menu.append(&quit).ok()?;
@@ -69,9 +72,9 @@ fn build_tray(shared: Arc<Shared>) -> Option<tray_icon::TrayIcon> {
     TrayIconBuilder::new().with_menu(Box::new(menu)).with_tooltip(TITLE).with_icon(icon).build().ok()
 }
 
-/// `teiqoflow.exe --transcribe <file.wav> [target-lang]`: runs a 16-bit PCM WAV file through
+/// `teiqoflow.exe --transcribe <file.wav> [target-lang] [model-id]`: runs a 16-bit PCM WAV file through
 /// recognition and translation and prints the result. Useful for checking the engine without a mic.
-fn transcribe_file(path: &str, target: &str) -> Result<(), String> {
+fn transcribe_file(path: &str, target: &str, model: Option<&str>) -> Result<(), String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
     let (mut channels, mut rate, mut data) = (1usize, 16_000u32, &bytes[0..0]);
     let mut i = 12;
@@ -94,14 +97,15 @@ fn transcribe_file(path: &str, target: &str) -> Result<(), String> {
     let audio = audio::resample(&mono, rate, audio::TARGET_SR);
 
     let shared = Shared::new(config::Config::load());
-    let model = shared.cfg().model;
-    let engine = stt::Engine::load(&stt::ensure_model(&model, &shared)?)?;
+    let model = model.map(str::to_string).unwrap_or_else(|| shared.cfg().model);
+    let mut engine = stt::Engine::load(&model, &stt::ensure_model(&model, &shared)?)?;
     let started = std::time::Instant::now();
     let (text, lang) = engine.transcribe(&audio, "auto")?;
     let cold_ms = started.elapsed().as_millis();
     // Second run shows the steady-state latency the app has once the model is warm.
     let started = std::time::Instant::now();
     let (text, lang) = engine.transcribe(&audio, "auto").unwrap_or((text, lang));
+    let text = if shared.cfg().lowercase { text.to_lowercase() } else { text };
     let stt_ms = format!("{} ms (first run {cold_ms} ms) for {:.1} s of audio", started.elapsed().as_millis(), audio.len() as f32 / 16_000.0);
     let started = std::time::Instant::now();
     let translated = translate::translate(&text, &lang, target)?;
@@ -116,13 +120,14 @@ fn main() -> eframe::Result {
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("--transcribe") {
         let target = args.get(3).map(String::as_str).unwrap_or("en");
-        if let Err(e) = transcribe_file(args.get(2).map(String::as_str).unwrap_or(""), target) {
+        if let Err(e) = transcribe_file(args.get(2).map(String::as_str).unwrap_or(""), target, args.get(4).map(String::as_str)) {
             println!("error: {e}");
         }
         return Ok(());
     }
 
     let cfg = config::Config::load();
+    i18n::set_language(&cfg.ui_lang);
     let model = cfg.model.clone();
     let shared = Arc::new(Shared::new(cfg));
 

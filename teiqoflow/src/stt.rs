@@ -1,40 +1,64 @@
 use crate::config::data_dir;
+use crate::i18n::tf;
 use crate::state::{Shared, StatusLevel};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum Kind {
+    Whisper,
+    GigaAm,
+}
+
 pub struct ModelInfo {
     pub id: &'static str,
     pub label: &'static str,
-    pub file: &'static str,
+    pub kind: Kind,
+    /// Base URL; files are downloaded from `{base}/{file}`. The first file is the model itself.
+    pub base: &'static str,
+    pub files: &'static [&'static str],
     pub size_mb: u32,
 }
 
+const WHISPER: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
+const GIGAAM: &str = "https://huggingface.co/istupakov/gigaam-v3-onnx/resolve/main";
+
 pub const MODELS: &[ModelInfo] = &[
-    ModelInfo { id: "tiny", label: "Tiny — fastest", file: "ggml-tiny.bin", size_mb: 75 },
-    ModelInfo { id: "base", label: "Base — fast", file: "ggml-base.bin", size_mb: 142 },
-    ModelInfo { id: "small", label: "Small — balanced", file: "ggml-small-q5_1.bin", size_mb: 181 },
-    ModelInfo { id: "medium", label: "Medium — accurate", file: "ggml-medium-q5_0.bin", size_mb: 514 },
-    ModelInfo { id: "large-v3-turbo", label: "Large v3 Turbo — best", file: "ggml-large-v3-turbo-q5_0.bin", size_mb: 547 },
+    ModelInfo { id: "gigaam-v3", label: "GigaAM v3 — Russian only, best for Russian", kind: Kind::GigaAm, base: GIGAAM, files: &["v3_e2e_ctc.int8.onnx", "v3_e2e_ctc_vocab.txt"], size_mb: 225 },
+    ModelInfo { id: "tiny", label: "Tiny — fastest", kind: Kind::Whisper, base: WHISPER, files: &["ggml-tiny.bin"], size_mb: 75 },
+    ModelInfo { id: "base", label: "Base — fast", kind: Kind::Whisper, base: WHISPER, files: &["ggml-base.bin"], size_mb: 142 },
+    ModelInfo { id: "small", label: "Small — balanced", kind: Kind::Whisper, base: WHISPER, files: &["ggml-small-q5_1.bin"], size_mb: 181 },
+    ModelInfo { id: "medium", label: "Medium — accurate", kind: Kind::Whisper, base: WHISPER, files: &["ggml-medium-q5_0.bin"], size_mb: 514 },
+    ModelInfo { id: "large-v3-turbo", label: "Large v3 Turbo — best", kind: Kind::Whisper, base: WHISPER, files: &["ggml-large-v3-turbo-q5_0.bin"], size_mb: 547 },
 ];
 
 pub fn model_info(id: &str) -> &'static ModelInfo {
-    MODELS.iter().find(|m| m.id == id).unwrap_or(&MODELS[2])
+    MODELS.iter().find(|m| m.id == id).unwrap_or(&MODELS[3])
 }
 
-pub fn model_path(id: &str) -> PathBuf {
-    data_dir().join("models").join(model_info(id).file)
+fn models_dir() -> PathBuf {
+    data_dir().join("models")
 }
 
+pub fn is_downloaded(id: &str) -> bool {
+    model_info(id).files.iter().all(|f| models_dir().join(f).exists())
+}
+
+/// Downloads any missing files of the model and returns the path of the main file.
 pub fn ensure_model(id: &str, shared: &Shared) -> Result<PathBuf, String> {
-    let path = model_path(id);
-    if path.exists() {
-        return Ok(path);
-    }
     let info = model_info(id);
-    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    let url = format!("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}", info.file);
-    let mut resp = crate::translate::agent().get(&url).call().map_err(|e| format!("Download failed: {e}"))?;
+    std::fs::create_dir_all(models_dir()).map_err(|e| e.to_string())?;
+    for file in info.files {
+        let path = models_dir().join(file);
+        if !path.exists() {
+            download(&format!("{}/{file}", info.base), &path, info, shared)?;
+        }
+    }
+    Ok(models_dir().join(info.files[0]))
+}
+
+fn download(url: &str, path: &std::path::Path, info: &ModelInfo, shared: &Shared) -> Result<(), String> {
+    let mut resp = crate::translate::download_agent().get(url).call().map_err(|e| format!("Download failed: {e}"))?;
     let total = resp
         .headers()
         .get("content-length")
@@ -55,84 +79,100 @@ pub fn ensure_model(id: &str, shared: &Shared) -> Result<PathBuf, String> {
         file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
         done += n as u64;
         let pct = done * 100 / total.max(1);
-        if pct != last_pct {
+        if pct != last_pct && total > 1_000_000 {
             last_pct = pct;
-            shared.set_status(format!("Downloading {} model… {pct}%", info.id), StatusLevel::Busy);
+            shared.set_status(tf("Downloading {} model… {}%", &[&info.id, &pct]), StatusLevel::Busy);
         }
     }
     drop(file);
-    std::fs::rename(&part, &path).map_err(|e| e.to_string())?;
-    Ok(path)
+    std::fs::rename(&part, path).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
-#[cfg(feature = "whisper")]
-pub struct Engine {
-    ctx: whisper_rs::WhisperContext,
+pub enum Engine {
+    #[cfg(feature = "whisper")]
+    Whisper(whisper_rs::WhisperContext),
+    GigaAm(crate::gigaam::GigaAm),
 }
 
-#[cfg(feature = "whisper")]
 impl Engine {
-    pub fn load(path: &std::path::Path) -> Result<Self, String> {
-        use whisper_rs::{WhisperContext, WhisperContextParameters};
-        whisper_rs::install_logging_hooks();
-        let ctx = WhisperContext::new_with_params(path, WhisperContextParameters::default())
-            .map_err(|e| format!("Could not load model: {e}"))?;
-        Ok(Self { ctx })
+    pub fn load(id: &str, path: &std::path::Path) -> Result<Self, String> {
+        match model_info(id).kind {
+            Kind::GigaAm => Ok(Engine::GigaAm(crate::gigaam::GigaAm::load(path)?)),
+            #[cfg(feature = "whisper")]
+            Kind::Whisper => {
+                use whisper_rs::{WhisperContext, WhisperContextParameters};
+                whisper_rs::install_logging_hooks();
+                let ctx = WhisperContext::new_with_params(path, WhisperContextParameters::default())
+                    .map_err(|e| format!("Could not load model: {e}"))?;
+                Ok(Engine::Whisper(ctx))
+            }
+            #[cfg(not(feature = "whisper"))]
+            Kind::Whisper => Err("Built without Whisper".into()),
+        }
+    }
+
+    /// Short name of the hardware doing the work, shown in the status line.
+    pub fn device(&self) -> &'static str {
+        match self {
+            #[cfg(feature = "whisper")]
+            Engine::Whisper(_) => {
+                if cfg!(any(feature = "vulkan", feature = "cuda")) { "GPU" } else { "CPU" }
+            }
+            Engine::GigaAm(g) => g.device(),
+        }
     }
 
     /// Returns (text, detected language code).
-    pub fn transcribe(&self, audio: &[f32], language: &str) -> Result<(String, String), String> {
-        use whisper_rs::{FullParams, SamplingStrategy};
-        let mut state = self.ctx.create_state().map_err(|e| e.to_string())?;
-        // Greedy decoding is several times faster than beam search, which matters for push-to-talk.
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-        // One thread per physical core; hyper-threads only add contention for whisper.cpp.
-        let threads = (std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8) / 2).clamp(2, 8);
-        params.set_n_threads(threads as i32);
-        let lang = if language == "auto" { "auto" } else { crate::languages::whisper_code(language) };
-        params.set_language(Some(lang));
-        params.set_no_context(true);
-        params.set_suppress_blank(true);
-        params.set_print_progress(false);
-        params.set_print_realtime(false);
-        params.set_print_special(false);
-        params.set_print_timestamps(false);
-
-        // Very short clips make Whisper hallucinate; pad to one second of silence.
-        let mut padded = audio.to_vec();
-        if padded.len() < 16_000 {
-            padded.resize(16_000, 0.0);
+    pub fn transcribe(&mut self, audio: &[f32], language: &str) -> Result<(String, String), String> {
+        match self {
+            Engine::GigaAm(g) => Ok((g.transcribe(audio)?, "ru".into())),
+            #[cfg(feature = "whisper")]
+            Engine::Whisper(ctx) => whisper_transcribe(ctx, audio, language),
         }
-        state.full(params, &padded).map_err(|e| e.to_string())?;
-
-        let mut text = String::new();
-        for i in 0..state.full_n_segments() {
-            if let Some(seg) = state.get_segment(i) {
-                if let Ok(s) = seg.to_str_lossy() {
-                    text.push_str(s.trim());
-                    text.push(' ');
-                }
-            }
-        }
-        let detected = whisper_rs::get_lang_str(state.full_lang_id_from_state()).unwrap_or(lang).to_string();
-        Ok((clean(&text), detected))
     }
 }
 
-#[cfg(not(feature = "whisper"))]
-pub struct Engine;
+#[cfg(feature = "whisper")]
+fn whisper_transcribe(ctx: &whisper_rs::WhisperContext, audio: &[f32], language: &str) -> Result<(String, String), String> {
+    use whisper_rs::{FullParams, SamplingStrategy};
+    let mut state = ctx.create_state().map_err(|e| e.to_string())?;
+    // Greedy decoding is several times faster than beam search, which matters for push-to-talk.
+    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+    // One thread per physical core; hyper-threads only add contention for whisper.cpp.
+    let threads = (std::thread::available_parallelism().map(|n| n.get()).unwrap_or(8) / 2).clamp(2, 8);
+    params.set_n_threads(threads as i32);
+    let lang = if language == "auto" { "auto" } else { crate::languages::whisper_code(language) };
+    params.set_language(Some(lang));
+    params.set_no_context(true);
+    params.set_suppress_blank(true);
+    params.set_print_progress(false);
+    params.set_print_realtime(false);
+    params.set_print_special(false);
+    params.set_print_timestamps(false);
 
-#[cfg(not(feature = "whisper"))]
-impl Engine {
-    pub fn load(_: &std::path::Path) -> Result<Self, String> {
-        Err("Built without speech recognition".into())
+    // Very short clips make Whisper hallucinate; pad to one second of silence.
+    let mut padded = audio.to_vec();
+    if padded.len() < 16_000 {
+        padded.resize(16_000, 0.0);
     }
-    pub fn transcribe(&self, _: &[f32], _: &str) -> Result<(String, String), String> {
-        Err("Built without speech recognition".into())
+    state.full(params, &padded).map_err(|e| e.to_string())?;
+
+    let mut text = String::new();
+    for i in 0..state.full_n_segments() {
+        if let Some(seg) = state.get_segment(i) {
+            if let Ok(s) = seg.to_str_lossy() {
+                text.push_str(s.trim());
+                text.push(' ');
+            }
+        }
     }
+    let detected = whisper_rs::get_lang_str(state.full_lang_id_from_state()).unwrap_or(lang).to_string();
+    Ok((clean(&text), detected))
 }
 
 /// Strips Whisper annotations such as "[BLANK_AUDIO]" or "(music)".
+#[cfg_attr(not(feature = "whisper"), allow(dead_code))]
 fn clean(text: &str) -> String {
     let mut out = String::new();
     let mut depth = 0;

@@ -16,9 +16,23 @@ pub enum KeyEvent {
 
 const VK_ESCAPE: u32 = 0x1B;
 
-/// Left/right/middle mouse and the generic Shift/Ctrl/Alt codes (which alias their L/R variants).
+/// Unassigned key code sent while Win is held so that releasing Win doesn't open the Start menu.
+const VK_DUMMY: u16 = 0xE8;
+
+/// Left/right/middle mouse, the generic Shift/Ctrl/Alt codes (which alias their L/R variants)
+/// and our own dummy key.
 fn ignored(vk: u32) -> bool {
-    matches!(vk, 0x01 | 0x02 | 0x04 | 0x10 | 0x11 | 0x12)
+    matches!(vk, 0x01 | 0x02 | 0x04 | 0x10 | 0x11 | 0x12 | 0xE8)
+}
+
+fn suppress_start_menu() {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput};
+    let key = |flags| INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: VK_DUMMY, wScan: 0, dwFlags: flags, time: 0, dwExtraInfo: 0 } },
+    };
+    let inputs = [key(0), key(KEYEVENTF_KEYUP)];
+    unsafe { SendInput(2, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32) };
 }
 
 fn is_mouse(vk: u32) -> bool {
@@ -114,6 +128,9 @@ pub fn spawn(shared: Arc<Shared>, tx: Sender<KeyEvent>) {
                     let fresh = combo.iter().any(|&vk| !prev[vk as usize]);
                     let extra = (1..256u32).any(|vk| down[vk as usize] && !ignored(vk) && !is_mouse(vk) && !combo.contains(&vk));
                     if fresh && !extra {
+                        if combo.iter().any(|&vk| vk == 0x5B || vk == 0x5C) {
+                            suppress_start_menu();
+                        }
                         active = true;
                         let _ = tx.send(KeyEvent::Press);
                     }

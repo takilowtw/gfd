@@ -4,7 +4,8 @@ use crate::engine::EngineMsg;
 use crate::hotkey::combo_name;
 use crate::languages::{LANGUAGES, name_for};
 use crate::state::{Capture, Shared, StatusLevel, lock};
-use crate::stt::{MODELS, model_info, model_path};
+use crate::i18n::{t, tf};
+use crate::stt::{Kind, MODELS, is_downloaded, model_info};
 use crossbeam_channel::Sender;
 use egui::{
     Align, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Frame, Layout, Margin, Mesh, Pos2, Rect,
@@ -18,8 +19,8 @@ pub const PANEL_2: Color32 = Color32::from_rgb(0x1B, 0x1B, 0x26);
 pub const BORDER: Color32 = Color32::from_rgb(0x26, 0x26, 0x33);
 pub const TEXT: Color32 = Color32::from_rgb(0xED, 0xED, 0xF3);
 pub const MUTED: Color32 = Color32::from_rgb(0x8B, 0x8B, 0x9E);
-pub const ACCENT_1: Color32 = Color32::from_rgb(0x7C, 0x5C, 0xFF);
-pub const ACCENT_2: Color32 = Color32::from_rgb(0xFF, 0x5C, 0xAA);
+pub const ACCENT_1: Color32 = Color32::from_rgb(0x25, 0x63, 0xEB);
+pub const ACCENT_2: Color32 = Color32::from_rgb(0x38, 0xBD, 0xF8);
 pub const OK: Color32 = Color32::from_rgb(0x3D, 0xDC, 0x97);
 pub const WARN: Color32 = Color32::from_rgb(0xFF, 0xB5, 0x47);
 pub const ERR: Color32 = Color32::from_rgb(0xFF, 0x5C, 0x70);
@@ -200,8 +201,8 @@ fn primary_button(ui: &mut Ui, text: &str) -> egui::Response {
     let galley = ui.painter().layout_no_wrap(text.to_string(), semibold(14.0), Color32::WHITE);
     let (rect, resp) = ui.allocate_exact_size(galley.size() + vec2(36.0, 18.0), Sense::click());
     let k = if resp.hovered() { 1.0 } else { 0.0 };
-    let c0 = lerp_color(ACCENT_1, Color32::from_rgb(0x8D, 0x71, 0xFF), k);
-    let c1 = lerp_color(ACCENT_2, Color32::from_rgb(0xFF, 0x74, 0xB8), k);
+    let c0 = lerp_color(ACCENT_1, Color32::from_rgb(0x3B, 0x76, 0xF6), k);
+    let c1 = lerp_color(ACCENT_2, Color32::from_rgb(0x5C, 0xCB, 0xFA), k);
     gradient_rect(ui, rect, 10.0, c0, c1);
     ui.painter().galley(rect.center() - galley.size() / 2.0, galley, Color32::WHITE);
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -305,6 +306,9 @@ impl eframe::App for App {
         });
 
         if cfg != before {
+            if cfg.ui_lang != before.ui_lang {
+                crate::i18n::set_language(&cfg.ui_lang);
+            }
             if cfg.model != before.model {
                 let _ = self.engine.send(EngineMsg::LoadModel(cfg.model.clone()));
             }
@@ -352,7 +356,7 @@ impl App {
             ui.label(RichText::new("teiqoflow").font(semibold(19.0)));
         });
         ui.add_space(26.0);
-        for (page, icon, label) in [(Page::Home, "⌂", "Home"), (Page::History, "☰", "History"), (Page::Settings, "⚙", "Settings")] {
+        for (page, icon, label) in [(Page::Home, "⌂", t("Home")), (Page::History, "☰", t("History")), (Page::Settings, "⚙", t("Settings"))] {
             let selected = self.page == page;
             let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click());
             if selected || resp.hovered() {
@@ -383,7 +387,7 @@ impl App {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.spacing_mut().item_spacing.y = 4.0;
-                caption(ui, "Engine");
+                caption(ui, t("Engine"));
                 ui.horizontal_top(|ui| {
                     let color = match level {
                         StatusLevel::Ok => OK,
@@ -405,47 +409,47 @@ impl App {
         // Hero card.
         let hero_h = 150.0;
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), hero_h), Sense::hover());
-        gradient_rect(ui, rect, 20.0, Color32::from_rgb(0x24, 0x1A, 0x4D), Color32::from_rgb(0x3A, 0x16, 0x31));
-        ui.painter().rect_stroke(rect, 20.0, Stroke::new(1.0, Color32::from_rgb(0x3A, 0x2F, 0x6B)), egui::StrokeKind::Inside);
+        gradient_rect(ui, rect, 20.0, Color32::from_rgb(0x12, 0x22, 0x4D), Color32::from_rgb(0x0B, 0x2B, 0x45));
+        ui.painter().rect_stroke(rect, 20.0, Stroke::new(1.0, Color32::from_rgb(0x23, 0x3E, 0x7A)), egui::StrokeKind::Inside);
         let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(28.0, 24.0))).layout(Layout::top_down(Align::Min)));
-        caption(&mut inner, "Push to talk");
+        caption(&mut inner, t("Push to talk"));
         inner.horizontal(|ui| {
-            ui.label(RichText::new("Hold").font(semibold(26.0)));
+            ui.label(RichText::new(t("Hold")).font(semibold(26.0)));
             keycap(ui, &combo_name(&cfg.hotkey), 16.0);
-            ui.label(RichText::new("and speak").font(semibold(26.0)));
+            ui.label(RichText::new(t("and speak")).font(semibold(26.0)));
         });
-        muted(&mut inner, "Release the key — your words are transcribed, translated and typed into whatever chat or text field your cursor is in.");
+        muted(&mut inner, t("Release the key — your words are transcribed, translated and typed into whatever chat or text field your cursor is in."));
         ui.add_space(6.0);
 
         card(ui, |ui| {
-            caption(ui, "Languages");
-            let mut src_opts: Vec<(String, String)> = vec![("auto".into(), "✨  Auto-detect".into())];
+            caption(ui, t("Languages"));
+            let mut src_opts: Vec<(String, String)> = vec![("auto".into(), format!("✨  {}", t("Auto-detect")))];
             src_opts.extend(LANGUAGES.iter().map(|(n, c)| (c.to_string(), n.to_string())));
             let dst_opts: Vec<(String, String)> = LANGUAGES.iter().map(|(n, c)| (c.to_string(), n.to_string())).collect();
             let col_w = (ui.available_width() - 70.0) / 2.0;
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
                     ui.set_width(col_w);
-                    muted(ui, "I speak");
+                    muted(ui, t("I speak"));
                     combo(ui, "src", col_w, &mut cfg.source_lang, &src_opts);
                 });
                 ui.vertical(|ui| {
                     ui.add_space(26.0);
                     let swap = ui
                         .add_enabled(cfg.source_lang != "auto", egui::Button::new(RichText::new("⇄").size(16.0)).corner_radius(19).min_size(vec2(40.0, 34.0)))
-                        .on_hover_text("Swap languages");
+                        .on_hover_text(t("Swap languages"));
                     if swap.clicked() {
                         std::mem::swap(&mut cfg.source_lang, &mut cfg.target_lang);
                     }
                 });
                 ui.vertical(|ui| {
                     ui.set_width(col_w);
-                    muted(ui, "Type it in");
+                    muted(ui, t("Type it in"));
                     combo(ui, "dst", col_w, &mut cfg.target_lang, &dst_opts);
                 });
             });
             ui.add_space(4.0);
-            setting_row(ui, "Translate", "Off = type exactly what you said", |ui| {
+            setting_row(ui, t("Translate"), t("Off = type exactly what you said"), |ui| {
                 toggle(ui, &mut cfg.translate);
             });
         });
@@ -453,7 +457,7 @@ impl App {
 
         let words: usize = cfg.history.iter().map(|h| h.result.split_whitespace().count()).sum();
         ui.columns(2, |cols| {
-            for (col, (title, value)) in cols.iter_mut().zip([("Words dictated", words), ("Dictations", cfg.history.len())]) {
+            for (col, (title, value)) in cols.iter_mut().zip([(t("Words dictated"), words), (t("Dictations"), cfg.history.len())]) {
                 card(col, |ui| {
                     caption(ui, title);
                     ui.label(RichText::new(value.to_string()).font(semibold(30.0)));
@@ -463,9 +467,9 @@ impl App {
         ui.add_space(6.0);
 
         card(ui, |ui| {
-            caption(ui, "Last dictation");
+            caption(ui, t("Last dictation"));
             match cfg.history.first() {
-                None => muted(ui, "Nothing yet — hold the key and say something."),
+                None => muted(ui, t("Nothing yet — hold the key and say something.")),
                 Some(h) => {
                     if h.original != h.result {
                         muted(ui, &h.original);
@@ -478,9 +482,9 @@ impl App {
 
     fn history(&mut self, ui: &mut Ui, cfg: &Config) {
         ui.horizontal(|ui| {
-            ui.label(RichText::new("History").font(semibold(26.0)));
+            ui.label(RichText::new(t("History")).font(semibold(26.0)));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if !cfg.history.is_empty() && ghost_button(ui, "Clear").clicked() {
+                if !cfg.history.is_empty() && ghost_button(ui, t("Clear")).clicked() {
                     let mut g = lock(&self.shared.cfg);
                     g.history.clear();
                     g.save();
@@ -489,7 +493,7 @@ impl App {
         });
         ui.add_space(4.0);
         if cfg.history.is_empty() {
-            muted(ui, "Your dictations will appear here.");
+            muted(ui, t("Your dictations will appear here."));
         }
         for item in &cfg.history {
             card(ui, |ui| {
@@ -497,7 +501,7 @@ impl App {
                 ui.horizontal(|ui| {
                     caption(ui, &format!("{}  ·  {} → {}", item.time, name_for(&item.src), name_for(&item.dst)));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ghost_button(ui, "Copy").clicked() {
+                        if ghost_button(ui, t("Copy")).clicked() {
                             ui.ctx().copy_text(item.result.clone());
                         }
                     });
@@ -512,11 +516,20 @@ impl App {
     }
 
     fn settings(&mut self, ui: &mut Ui, cfg: &mut Config) {
-        ui.label(RichText::new("Settings").font(semibold(26.0)));
+        ui.label(RichText::new(t("Settings")).font(semibold(26.0)));
         ui.add_space(4.0);
 
         card(ui, |ui| {
-            caption(ui, "Shortcut & input");
+            caption(ui, t("Interface"));
+            setting_row(ui, t("Interface language"), "", |ui| {
+                let opts = vec![("ru".to_string(), "Русский".to_string()), ("en".to_string(), "English".to_string())];
+                combo(ui, "ui_lang", 200.0, &mut cfg.ui_lang, &opts);
+            });
+        });
+        ui.add_space(6.0);
+
+        card(ui, |ui| {
+            caption(ui, t("Shortcut & input"));
             let capture = lock(&self.shared.capture).clone();
             if let Capture::Finished(keys) = &capture {
                 if !keys.is_empty() {
@@ -525,22 +538,22 @@ impl App {
                 *lock(&self.shared.capture) = Capture::Off;
             }
             let waiting = capture == Capture::Waiting;
-            setting_row(ui, "Push-to-talk key", "Hold to record, release to type. Esc cancels.", |ui| {
+            setting_row(ui, t("Push-to-talk key"), t("Hold to record, release to type. Esc cancels."), |ui| {
                 if waiting {
-                    ui.label(RichText::new("Press keys…").font(semibold(14.0)).color(ACCENT_2));
+                    ui.label(RichText::new(t("Press keys…")).font(semibold(14.0)).color(ACCENT_2));
                 } else {
-                    if primary_button(ui, "Change").clicked() {
+                    if primary_button(ui, t("Change")).clicked() {
                         *lock(&self.shared.capture) = Capture::Waiting;
                     }
                     keycap(ui, &combo_name(&cfg.hotkey), 14.0);
                 }
             });
             ui.add_space(4.0);
-            setting_row(ui, "Microphone", "", |ui| {
-                if ghost_button(ui, "↻").on_hover_text("Refresh list").clicked() {
+            setting_row(ui, t("Microphone"), "", |ui| {
+                if ghost_button(ui, "↻").on_hover_text(t("Refresh list")).clicked() {
                     self.mics = audio::list_microphones();
                 }
-                let mut opts: Vec<(Option<String>, String)> = vec![(None, "System default".into())];
+                let mut opts: Vec<(Option<String>, String)> = vec![(None, t("System default").into())];
                 opts.extend(self.mics.iter().map(|m| (Some(m.clone()), m.clone())));
                 combo(ui, "mic", 240.0, &mut cfg.microphone, &opts);
             });
@@ -548,18 +561,21 @@ impl App {
         ui.add_space(6.0);
 
         card(ui, |ui| {
-            caption(ui, "Recognition");
-            let downloaded = model_path(&cfg.model).exists();
+            caption(ui, t("Recognition"));
+            let downloaded = is_downloaded(&cfg.model);
             let info = model_info(&cfg.model);
-            let sub = if downloaded {
-                "Larger = more accurate but slower.".to_string()
+            let mut sub = if downloaded {
+                t("Larger = more accurate but slower.").to_string()
             } else {
-                format!("Larger = more accurate but slower. Downloads {} MB on first use.", info.size_mb)
+                tf("Larger = more accurate but slower. Downloads {} MB on first use.", &[&info.size_mb])
             };
-            setting_row(ui, "Speech model", &sub, |ui| {
+            if info.kind == Kind::GigaAm {
+                sub = format!("{} {sub}", t("GigaAM recognises Russian only."));
+            }
+            setting_row(ui, t("Speech model"), &sub, |ui| {
                 let opts: Vec<(String, String)> = MODELS
                     .iter()
-                    .map(|m| (m.id.to_string(), if model_path(m.id).exists() { m.label.to_string() } else { format!("{}  ·  {} MB", m.label, m.size_mb) }))
+                    .map(|m| (m.id.to_string(), if is_downloaded(m.id) { t(m.label).to_string() } else { format!("{}  ·  {} MB", t(m.label), m.size_mb) }))
                     .collect();
                 combo(ui, "model", 280.0, &mut cfg.model, &opts);
             });
@@ -567,18 +583,21 @@ impl App {
         ui.add_space(6.0);
 
         card(ui, |ui| {
-            caption(ui, "Output");
-            setting_row(ui, "Insert method", "Use typing if an app blocks pasting", |ui| {
-                let opts = vec![(InsertMethod::Paste, "Paste (fast, recommended)".to_string()), (InsertMethod::Type, "Simulate typing".to_string())];
+            caption(ui, t("Output"));
+            setting_row(ui, t("Insert method"), t("Use typing if an app blocks pasting"), |ui| {
+                let opts = vec![(InsertMethod::Paste, t("Paste (fast, recommended)").to_string()), (InsertMethod::Type, t("Simulate typing").to_string())];
                 combo(ui, "insert", 240.0, &mut cfg.insert_method, &opts);
             });
-            setting_row(ui, "Send automatically", "Press Enter after inserting the text", |ui| {
+            setting_row(ui, t("Lowercase"), t("Type everything in lowercase"), |ui| {
+                toggle(ui, &mut cfg.lowercase);
+            });
+            setting_row(ui, t("Send automatically"), t("Press Enter after inserting the text"), |ui| {
                 toggle(ui, &mut cfg.auto_enter);
             });
-            setting_row(ui, "Keep my clipboard", "Restore the clipboard after pasting", |ui| {
+            setting_row(ui, t("Keep my clipboard"), t("Restore the clipboard after pasting"), |ui| {
                 toggle(ui, &mut cfg.restore_clipboard);
             });
-            setting_row(ui, "Sounds", "Soft click when recording starts and stops", |ui| {
+            setting_row(ui, t("Sounds"), t("Soft click when recording starts and stops"), |ui| {
                 toggle(ui, &mut cfg.sounds);
             });
         });

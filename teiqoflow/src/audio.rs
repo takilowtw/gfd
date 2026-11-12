@@ -42,7 +42,7 @@ pub struct Recording {
 
 impl Recording {
     pub fn start(mic: Option<&str>, shared: Arc<Shared>) -> Result<Self, String> {
-        let device = find_device(mic).ok_or("No microphone found")?;
+        let device = find_device(mic).ok_or(crate::i18n::t("No microphone found"))?;
         let supported = device.default_input_config().map_err(|e| e.to_string())?;
         let format = supported.sample_format();
         let config: StreamConfig = supported.config();

@@ -15,6 +15,18 @@ pub fn agent() -> &'static Agent {
     })
 }
 
+/// Like `agent()` but without the overall timeout, for model downloads that take minutes.
+pub fn download_agent() -> &'static Agent {
+    static AGENT: OnceLock<Agent> = OnceLock::new();
+    AGENT.get_or_init(|| {
+        Agent::config_builder()
+            .tls_config(TlsConfig::builder().provider(TlsProvider::NativeTls).root_certs(RootCerts::PlatformVerifier).build())
+            .timeout_connect(Some(Duration::from_secs(15)))
+            .build()
+            .new_agent()
+    })
+}
+
 /// Translates `text` into `target`. `source` is a language code or "auto".
 /// Free endpoints rate-limit some networks (HTTP 429), so several are tried in turn.
 pub fn translate(text: &str, source: &str, target: &str) -> Result<String, String> {

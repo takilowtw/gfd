@@ -5,6 +5,7 @@ use crate::config::HistoryItem;
 use crate::hotkey::KeyEvent;
 use crate::state::{Phase, Shared, StatusLevel, lock};
 use crate::stt::{self, Engine};
+use crate::i18n::{t, tf};
 use crate::{languages, output, sound, translate};
 use crossbeam_channel::{Receiver, Sender, unbounded};
 use std::sync::Arc;
@@ -49,7 +50,7 @@ pub fn spawn(shared: Arc<Shared>, keys: Receiver<KeyEvent>) -> Sender<EngineMsg>
                                 s.set_level(0.0);
                                 s.set_phase(Phase::Listening);
                             }
-                            Err(e) => s.set_phase(Phase::Error(format!("Microphone: {e}"))),
+                            Err(e) => s.set_phase(Phase::Error(tf("Microphone: {}", &[&e]))),
                         }
                     }
                     KeyEvent::Cancel => {
@@ -66,11 +67,11 @@ pub fn spawn(shared: Arc<Shared>, keys: Receiver<KeyEvent>) -> Sender<EngineMsg>
                         if samples.len() < MIN_SAMPLES {
                             s.set_phase(Phase::Idle);
                         } else if audio::rms(&samples) < SILENCE_RMS {
-                            s.set_phase(Phase::Error("Didn't hear anything — check your microphone".into()));
+                            s.set_phase(Phase::Error(t("Didn't hear anything — check your microphone").into()));
                         } else if !s.model_ready.load(Ordering::Relaxed) {
-                            s.set_phase(Phase::Error("Speech model is still loading…".into()));
+                            s.set_phase(Phase::Error(t("Speech model is still loading…").into()));
                         } else {
-                            s.set_phase(Phase::Processing("Transcribing".into()));
+                            s.set_phase(Phase::Processing(t("Transcribing").into()));
                             let _ = engine_tx.send(EngineMsg::Transcribe(samples));
                         }
                     }
@@ -89,24 +90,25 @@ fn engine_loop(shared: Arc<Shared>, rx: Receiver<EngineMsg>) {
             EngineMsg::LoadModel(id) => {
                 shared.model_ready.store(false, Ordering::Relaxed);
                 engine = None;
-                shared.set_status(format!("Loading {id} model…"), StatusLevel::Busy);
+                let loading = tf("Loading {} model…", &[&id]);
+                shared.set_status(loading.clone(), StatusLevel::Busy);
                 let result = stt::ensure_model(&id, &shared).and_then(|path| {
-                    shared.set_status(format!("Loading {id} model…"), StatusLevel::Busy);
-                    Engine::load(&path)
+                    shared.set_status(loading, StatusLevel::Busy);
+                    Engine::load(&id, &path)
                 });
                 match result {
                     Ok(e) => {
+                        let device = e.device();
                         engine = Some(e);
                         shared.model_ready.store(true, Ordering::Relaxed);
-                        let accel = if cfg!(any(feature = "vulkan", feature = "cuda")) { "GPU" } else { "CPU" };
-                        shared.set_status(format!("Ready · {} model · {accel}", stt::model_info(&id).id), StatusLevel::Ok);
+                        shared.set_status(tf("Ready · {} model · {}", &[&stt::model_info(&id).id, &device]), StatusLevel::Ok);
                     }
                     Err(e) => shared.set_status(e, StatusLevel::Error),
                 }
             }
             EngineMsg::Transcribe(samples) => {
-                let Some(engine) = engine.as_ref() else {
-                    shared.set_phase(Phase::Error("Speech model is not loaded".into()));
+                let Some(engine) = engine.as_mut() else {
+                    shared.set_phase(Phase::Error(t("Speech model is not loaded").into()));
                     continue;
                 };
                 process(&shared, engine, &samples);
@@ -116,30 +118,34 @@ fn engine_loop(shared: Arc<Shared>, rx: Receiver<EngineMsg>) {
     }
 }
 
-fn process(shared: &Shared, engine: &Engine, samples: &[f32]) {
+fn process(shared: &Shared, engine: &mut Engine, samples: &[f32]) {
     let cfg = shared.cfg();
     let (text, detected) = match engine.transcribe(samples, &cfg.source_lang) {
         Ok(r) => r,
         Err(e) => return shared.set_phase(Phase::Error(e)),
     };
     if text.is_empty() {
-        return shared.set_phase(Phase::Error("Didn't catch that — try again".into()));
+        return shared.set_phase(Phase::Error(t("Didn't catch that — try again").into()));
     }
 
-    let src = if cfg.source_lang == "auto" { detected } else { cfg.source_lang.clone() };
+    // GigaAM only understands Russian, so its output is Russian whatever the setting says.
+    let src = if cfg.source_lang == "auto" || detected == "ru" { detected } else { cfg.source_lang.clone() };
     let mut result = text.clone();
     let mut dst = src.clone();
     if cfg.translate && !languages::same_language(&src, &cfg.target_lang) {
-        shared.set_phase(Phase::Processing("Translating".into()));
+        shared.set_phase(Phase::Processing(t("Translating").into()));
         match translate::translate(&text, &src, &cfg.target_lang) {
             Ok(t) => {
                 result = t;
                 dst = cfg.target_lang.clone();
             }
-            Err(e) => return shared.set_phase(Phase::Error(format!("Translation failed: {e}"))),
+            Err(e) => return shared.set_phase(Phase::Error(tf("Translation failed: {}", &[&e]))),
         }
     } else if cfg.translate {
         dst = cfg.target_lang.clone();
+    }
+    if cfg.lowercase {
+        result = result.to_lowercase();
     }
 
     shared.suppress_hotkey.store(true, Ordering::Relaxed);
@@ -158,6 +164,5 @@ fn now_string() -> String {
     use windows_sys::Win32::System::SystemInformation::GetLocalTime;
     let mut t = unsafe { std::mem::zeroed() };
     unsafe { GetLocalTime(&mut t) };
-    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    format!("{} {} {:02}:{:02}", t.wDay, MONTHS[(t.wMonth.clamp(1, 12) - 1) as usize], t.wHour, t.wMinute)
+    format!("{:02}.{:02} {:02}:{:02}", t.wDay, t.wMonth, t.wHour, t.wMinute)
 }

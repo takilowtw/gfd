@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-pub const VK_RCONTROL: u32 = 0xA3;
+pub const VK_LCONTROL: u32 = 0xA2;
+pub const VK_LWIN: u32 = 0x5B;
+/// Bumped when defaults change in a way existing users should receive.
+const CONFIG_VERSION: u32 = 2;
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct HistoryItem {
@@ -15,6 +18,10 @@ pub struct HistoryItem {
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    /// Missing in files written before versioning, so it deserialises as 0.
+    #[serde(default)]
+    pub version: u32,
+    pub ui_lang: String,
     /// Virtual-key codes that must all be held.
     pub hotkey: Vec<u32>,
     pub source_lang: String,
@@ -23,6 +30,7 @@ pub struct Config {
     pub model: String,
     pub microphone: Option<String>,
     pub insert_method: InsertMethod,
+    pub lowercase: bool,
     pub auto_enter: bool,
     pub restore_clipboard: bool,
     pub sounds: bool,
@@ -38,13 +46,16 @@ pub enum InsertMethod {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            hotkey: vec![VK_RCONTROL],
+            version: CONFIG_VERSION,
+            ui_lang: "ru".into(),
+            hotkey: vec![VK_LCONTROL, VK_LWIN],
             source_lang: "auto".into(),
             target_lang: "en".into(),
             translate: true,
             model: "small".into(),
             microphone: None,
             insert_method: InsertMethod::Paste,
+            lowercase: true,
             auto_enter: false,
             restore_clipboard: true,
             sounds: true,
@@ -62,10 +73,21 @@ fn config_path() -> PathBuf {
 }
 
 impl Config {
+    fn migrate(mut self) -> Self {
+        if self.version < 2 {
+            // v2: Ctrl+Win push-to-talk and lowercase output became the defaults.
+            self.hotkey = vec![VK_LCONTROL, VK_LWIN];
+            self.lowercase = true;
+            self.version = 2;
+        }
+        self
+    }
+
     pub fn load() -> Self {
         std::fs::read_to_string(config_path())
             .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+            .and_then(|s| serde_json::from_str::<Config>(&s).ok())
+            .map(Config::migrate)
             .unwrap_or_default()
     }
 

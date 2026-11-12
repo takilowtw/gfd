@@ -20,8 +20,8 @@ recognition much faster than a plain `cargo build`. The first build takes a few 
 To check recognition and translation without a microphone:
 `target\release\teiqoflow.exe --transcribe some.wav en | more`
 
-Optional NVIDIA GPU acceleration needs the
-CUDA Toolkit and `cargo build --release --features cuda`.
+GPU acceleration: install the Vulkan SDK (`winget install KhronosGroup.VulkanSDK`) and run
+`build.ps1 -Clean`; it then builds with `--features vulkan` automatically.
 
 ## Use
 

@@ -98,7 +98,8 @@ fn engine_loop(shared: Arc<Shared>, rx: Receiver<EngineMsg>) {
                     Ok(e) => {
                         engine = Some(e);
                         shared.model_ready.store(true, Ordering::Relaxed);
-                        shared.set_status(format!("Ready · {} model", stt::model_info(&id).id), StatusLevel::Ok);
+                        let accel = if cfg!(any(feature = "vulkan", feature = "cuda")) { "GPU" } else { "CPU" };
+                        shared.set_status(format!("Ready · {} model · {accel}", stt::model_info(&id).id), StatusLevel::Ok);
                     }
                     Err(e) => shared.set_status(e, StatusLevel::Error),
                 }

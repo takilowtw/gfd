@@ -24,5 +24,15 @@ $env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin'
 
 $ErrorActionPreference = 'Continue'
 if ($Clean) { cargo clean --release -p whisper-rs-sys }
-cargo build --release
+
+# With the Vulkan SDK installed, recognition runs on the GPU (any NVIDIA/AMD/Intel card).
+if (-not $env:VULKAN_SDK) { $env:VULKAN_SDK = [Environment]::GetEnvironmentVariable('VULKAN_SDK', 'Machine') }
+if ($env:VULKAN_SDK -and (Test-Path $env:VULKAN_SDK)) {
+    Write-Host "Building with GPU (Vulkan) support from $env:VULKAN_SDK"
+    $env:PATH = "$env:VULKAN_SDK\Bin;$env:PATH"
+    cargo build --release --features vulkan
+} else {
+    Write-Host 'Vulkan SDK not found: building CPU-only (winget install KhronosGroup.VulkanSDK for GPU).'
+    cargo build --release
+}
 exit $LASTEXITCODE

@@ -7,7 +7,9 @@ description = "Push-to-talk dictation with instant translation"
 [features]
 default = ["whisper"]
 whisper = ["dep:whisper-rs"]
-# GPU acceleration; needs the CUDA Toolkit installed when building.
+# GPU acceleration. vulkan works on any modern GPU (needs the Vulkan SDK to build);
+# cuda needs the CUDA Toolkit.
+vulkan = ["whisper", "whisper-rs/vulkan"]
 cuda = ["whisper", "whisper-rs/cuda"]
 
 [dependencies]

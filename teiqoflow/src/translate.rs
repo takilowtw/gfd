@@ -27,22 +27,70 @@ pub fn download_agent() -> &'static Agent {
     })
 }
 
-/// Translates `text` into `target`. `source` is a language code or "auto".
-/// Free endpoints rate-limit some networks (HTTP 429), so several are tried in turn.
-pub fn translate(text: &str, source: &str, target: &str) -> Result<String, String> {
-    let mut errors = Vec::new();
-    for (name, f) in [
-        ("Google", google_chrome as fn(&str, &str, &str) -> Result<String, String>),
-        ("Google gtx", google_gtx),
-        ("MyMemory", mymemory),
-    ] {
-        match f(text, source, target) {
-            Ok(t) if !t.trim().is_empty() => return Ok(t.trim().to_string()),
-            Ok(_) => errors.push(format!("{name}: empty")),
-            Err(e) => errors.push(format!("{name}: {e}")),
+/// Translators offered in settings: id and English label.
+pub const TRANSLATORS: &[(&str, &str)] = &[("google", "Google (free)"), ("deepl", "DeepL (API key)"), ("mymemory", "MyMemory (free)")];
+
+/// Translates `text` into `target` with the chosen translator. `source` is a language code or "auto".
+/// Google's free endpoints rate-limit some networks (HTTP 429), so for Google several are tried in turn.
+pub fn translate(text: &str, source: &str, target: &str, translator: &str, deepl_key: &str) -> Result<String, String> {
+    let attempt = |name: &str, r: Result<String, String>| match r {
+        Ok(t) if !t.trim().is_empty() => Ok(t.trim().to_string()),
+        Ok(_) => Err(format!("{name}: empty")),
+        Err(e) => Err(format!("{name}: {e}")),
+    };
+    match translator {
+        "deepl" => attempt("DeepL", deepl(text, source, target, deepl_key)),
+        "mymemory" => attempt("MyMemory", mymemory(text, source, target)),
+        _ => {
+            let mut errors = Vec::new();
+            for (name, f) in [
+                ("Google", google_chrome as fn(&str, &str, &str) -> Result<String, String>),
+                ("Google gtx", google_gtx),
+                ("MyMemory", mymemory),
+            ] {
+                match attempt(name, f(text, source, target)) {
+                    Ok(t) => return Ok(t),
+                    Err(e) => errors.push(e),
+                }
+            }
+            Err(errors.join("; "))
         }
     }
-    Err(errors.join("; "))
+}
+
+/// DeepL API. Free-plan keys end in ":fx" and use a separate host.
+fn deepl(text: &str, source: &str, target: &str, key: &str) -> Result<String, String> {
+    let key = key.trim();
+    if key.is_empty() {
+        return Err("add your API key in settings".into());
+    }
+    let host = if key.ends_with(":fx") { "api-free.deepl.com" } else { "api.deepl.com" };
+    let base = |c: &str| c.split('-').next().unwrap_or(c).to_ascii_uppercase();
+    // DeepL wants a regional variant for some target languages.
+    let target = match base(target).as_str() {
+        "EN" => "EN-US".to_string(),
+        "PT" => "PT-BR".to_string(),
+        "ZH" => "ZH-HANS".to_string(),
+        other => other.to_string(),
+    };
+    let mut body = serde_json::json!({ "text": [text], "target_lang": target });
+    if source != "auto" {
+        body["source_lang"] = base(source).into();
+    }
+    let mut resp = agent()
+        .post(format!("https://{host}/v2/translate"))
+        .header("Authorization", format!("DeepL-Auth-Key {key}"))
+        .send_json(&body)
+        .map_err(|e| match e {
+            ureq::Error::StatusCode(403) => "invalid API key".to_string(),
+            ureq::Error::StatusCode(456) => "monthly limit reached".to_string(),
+            e => e.to_string(),
+        })?;
+    let json: serde_json::Value = resp.body_mut().read_json().map_err(|e| e.to_string())?;
+    json.pointer("/translations/0/text")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| "unexpected response".into())
 }
 
 fn get_json(req: ureq::RequestBuilder<ureq::typestate::WithoutBody>) -> Result<serde_json::Value, String> {

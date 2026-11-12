@@ -128,13 +128,13 @@ fn process(shared: &Shared, engine: &mut Engine, samples: &[f32]) {
         return shared.set_phase(Phase::Error(t("Didn't catch that — try again").into()));
     }
 
-    // GigaAM only understands Russian, so its output is Russian whatever the setting says.
+    // GigaAM output that is mostly Cyrillic is Russian whatever the setting says.
     let src = if cfg.source_lang == "auto" || detected == "ru" { detected } else { cfg.source_lang.clone() };
     let mut result = text.clone();
     let mut dst = src.clone();
     if cfg.translate && !languages::same_language(&src, &cfg.target_lang) {
         shared.set_phase(Phase::Processing(t("Translating").into()));
-        match translate::translate(&text, &src, &cfg.target_lang) {
+        match translate::translate(&text, &src, &cfg.target_lang, &cfg.translator, &cfg.deepl_key) {
             Ok(t) => {
                 result = t;
                 dst = cfg.target_lang.clone();

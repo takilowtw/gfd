@@ -37,6 +37,9 @@ pub struct Config {
     /// Id from `style::ACCENTS`.
     pub accent: String,
     pub light_theme: bool,
+    /// Id from `translate::TRANSLATORS`.
+    pub translator: String,
+    pub deepl_key: String,
     pub history: Vec<HistoryItem>,
 }
 
@@ -64,6 +67,8 @@ impl Default for Config {
             sounds: true,
             accent: "blue".into(),
             light_theme: false,
+            translator: "google".into(),
+            deepl_key: String::new(),
             history: Vec::new(),
         }
     }

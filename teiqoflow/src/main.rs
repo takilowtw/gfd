@@ -109,7 +109,8 @@ fn transcribe_file(path: &str, target: &str, model: Option<&str>) -> Result<(), 
     let text = if shared.cfg().lowercase { text.to_lowercase() } else { text };
     let stt_ms = format!("{} ms (first run {cold_ms} ms) for {:.1} s of audio", started.elapsed().as_millis(), audio.len() as f32 / 16_000.0);
     let started = std::time::Instant::now();
-    let translated = translate::translate(&text, &lang, target)?;
+    let cfg = shared.cfg();
+    let translated = translate::translate(&text, &lang, target, &cfg.translator, &cfg.deepl_key)?;
     let tr_ms = started.elapsed().as_millis();
     #[cfg(feature = "whisper")]
     println!("system: {}", whisper_rs::print_system_info());

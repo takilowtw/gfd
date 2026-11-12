@@ -578,6 +578,21 @@ impl App {
         ui.add_space(6.0);
 
         card(ui, |ui| {
+            caption(ui, t("Translation"));
+            setting_row(ui, t("Translator"), t("Used when Translate is on"), |ui| {
+                let opts: Vec<(String, String)> = crate::translate::TRANSLATORS.iter().map(|(id, label)| (id.to_string(), t(label).to_string())).collect();
+                combo(ui, "translator", 240.0, &mut cfg.translator, &opts);
+            });
+            if cfg.translator == "deepl" {
+                ui.add_space(4.0);
+                setting_row(ui, t("DeepL API key"), t("Free key at deepl.com/pro-api (500,000 characters a month)"), |ui| {
+                    ui.add(egui::TextEdit::singleline(&mut cfg.deepl_key).password(true).hint_text("xxxxxxxx-…:fx").desired_width(240.0));
+                });
+            }
+        });
+        ui.add_space(6.0);
+
+        card(ui, |ui| {
             caption(ui, t("Output"));
             setting_row(ui, t("Insert method"), t("Use typing if an app blocks pasting"), |ui| {
                 let opts = vec![(InsertMethod::Paste, t("Paste (fast, recommended)").to_string()), (InsertMethod::Type, t("Simulate typing").to_string())];

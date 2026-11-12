@@ -96,6 +96,8 @@ fn combo<T: PartialEq + Clone>(ui: &mut Ui, id: &str, width: f32, value: &mut T,
     egui::ComboBox::from_id_salt(id)
         .width(width)
         .height(360.0)
+        // Long labels would otherwise widen the box over the row's description.
+        .truncate()
         .selected_text(RichText::new(current).size(14.0))
         .show_ui(ui, |ui| {
             for (v, label) in options {

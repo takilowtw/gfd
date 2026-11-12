@@ -207,11 +207,14 @@ pub fn window_background(ui: &Ui) {
     ui.painter().rect(full, WINDOW_RADIUS, BG, Stroke::new(1.0, BORDER), egui::StrokeKind::Inside);
 }
 
-/// Tells Windows 11 not to round or outline the window itself: the app draws its own rounded
-/// edge, and a second system outline is what made the corners look doubled.
+/// Tells Windows not to round, outline or shadow the window itself: the app draws its own rounded
+/// edge. A second system outline made the corners look doubled, and the system shadow follows the
+/// square window bounds, leaving a visible notch behind each transparent corner.
 #[cfg(windows)]
 pub fn disable_system_frame(title: &str) {
-    use windows_sys::Win32::Graphics::Dwm::{DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DwmSetWindowAttribute};
+    use windows_sys::Win32::Graphics::Dwm::{
+        DWMNCRP_DISABLED, DWMWA_BORDER_COLOR, DWMWA_NCRENDERING_POLICY, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DwmSetWindowAttribute,
+    };
     use windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW;
     const DWMWA_COLOR_NONE: u32 = 0xFFFF_FFFE;
     let title: Vec<u16> = title.encode_utf16().chain(Some(0)).collect();
@@ -225,5 +228,6 @@ pub fn disable_system_frame(title: &str) {
         };
         set(DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND as u32);
         set(DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE);
+        set(DWMWA_NCRENDERING_POLICY, DWMNCRP_DISABLED as u32);
     }
 }

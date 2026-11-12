@@ -25,12 +25,12 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WS_EX_TRANSPARENT, WS_POPUP,
 };
 
-const BARS: usize = 26;
-// Logical sizes; multiplied by the DPI scale.
+const BARS: usize = 12;
+// Logical sizes; multiplied by the DPI scale. A small pill, as in Wispr Flow.
 const WIN_W: f32 = 620.0;
 const WIN_H: f32 = 96.0;
-const PILL_H: f32 = 52.0;
-const LISTEN_W: f32 = 236.0;
+const PILL_H: f32 = 34.0;
+const LISTEN_W: f32 = 108.0;
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
@@ -123,7 +123,8 @@ fn run(shared: Arc<Shared>) {
             let visible = match &phase {
                 Phase::Idle => false,
                 Phase::Listening | Phase::Processing(_) => true,
-                Phase::Done(_) => since.elapsed() < Duration::from_millis(1700),
+                // The text is already typed into the app, so just fade out.
+                Phase::Done(_) => false,
                 Phase::Error(_) => since.elapsed() < Duration::from_millis(3200),
             };
             if phase == Phase::Listening && since.elapsed() < Duration::from_millis(30) {
@@ -143,7 +144,9 @@ fn run(shared: Arc<Shared>) {
             }
 
             let target_w = match &phase {
-                Phase::Done(t) | Phase::Error(t) => (text.width(t, 14.0) + 84.0).clamp(220.0, WIN_W - 40.0),
+                Phase::Error(t) => (text.width(t, 13.0) + 52.0).clamp(140.0, WIN_W - 40.0),
+                Phase::Processing(t) => (text.width(t, 13.0) + 66.0).clamp(LISTEN_W, WIN_W - 40.0),
+                Phase::Done(_) => anim.width,
                 _ => LISTEN_W,
             };
             anim.width += (target_w - anim.width) * 0.25;
@@ -213,15 +216,15 @@ fn draw(pm: &mut Pixmap, text: &TextRenderer, phase: &Phase, anim: &Anim, s: f32
     let cy = y + h / 2.0;
     match phase {
         Phase::Listening => {
-            let left = x + 22.0;
-            let right = x + w - 22.0;
+            let left = x + 16.0;
+            let right = x + w - 16.0;
             let step = (right - left) / BARS as f32;
-            let bw = 3.6;
+            let bw = 2.6;
             let shader = gradient(left, 0.0, right, 0.0, 1.0);
             let mut pb = PathBuilder::new();
             for (i, &lvl) in anim.levels.iter().enumerate() {
                 let idle = 0.08 + 0.05 * (t * 4.0 + i as f32 * 0.6).sin();
-                let bh = (lvl.max(idle) * (h - 16.0)).max(4.0);
+                let bh = (lvl.max(idle) * (h - 14.0)).max(3.0);
                 let bx = left + i as f32 * step + (step - bw) / 2.0;
                 if let Some(r) = tiny_skia::Rect::from_xywh(bx, cy - bh / 2.0, bw, bh) {
                     pb.push_rect(r);
@@ -232,39 +235,32 @@ fn draw(pm: &mut Pixmap, text: &TextRenderer, phase: &Phase, anim: &Anim, s: f32
             }
         }
         Phase::Processing(label) => {
-            text.draw(pm, label, (x + 26.0) * s, cy * s, 14.0 * s, [0xED, 0xED, 0xF3, 255]);
+            text.draw(pm, label, (x + 16.0) * s, cy * s, 13.0 * s, [0xED, 0xED, 0xF3, 255]);
             let (c0, c1) = (crate::style::accent_1(), crate::style::accent_2());
             for i in 0..3 {
                 let c = crate::style::lerp_color(c0, c1, i as f32 / 2.0);
                 let (r, g, b) = (c.r(), c.g(), c.b());
                 let a = 0.3 + 0.7 * (t * 6.0 - i as f32 * 0.7).sin().max(0.0);
-                circle(pm, x + w - 60.0 + i as f32 * 15.0, cy - 3.0 * a, 4.0, Color::from_rgba8(r, g, b, (a * 255.0) as u8), id);
+                circle(pm, x + w - 38.0 + i as f32 * 9.0, cy - 2.0 * a, 2.6, Color::from_rgba8(r, g, b, (a * 255.0) as u8), id);
             }
         }
-        Phase::Done(msg) | Phase::Error(msg) => {
-            let ok = matches!(phase, Phase::Done(_));
-            let c = if ok { Color::from_rgba8(0x3D, 0xDC, 0x97, 255) } else { Color::from_rgba8(0xFF, 0x5C, 0x70, 255) };
-            let ix = x + 28.0;
-            circle(pm, ix, cy, 10.0, c, id);
+        Phase::Error(msg) => {
+            let ix = x + 18.0;
+            circle(pm, ix, cy, 8.0, Color::from_rgba8(0xFF, 0x5C, 0x70, 255), id);
             let mut pb = PathBuilder::new();
-            if ok {
-                pb.move_to(ix - 4.5, cy);
-                pb.line_to(ix - 1.0, cy + 3.5);
-                pb.line_to(ix + 5.0, cy - 4.0);
-            } else {
-                pb.move_to(ix - 4.0, cy - 4.0);
-                pb.line_to(ix + 4.0, cy + 4.0);
-                pb.move_to(ix + 4.0, cy - 4.0);
-                pb.line_to(ix - 4.0, cy + 4.0);
-            }
+            pb.move_to(ix - 3.0, cy - 3.0);
+            pb.line_to(ix + 3.0, cy + 3.0);
+            pb.move_to(ix + 3.0, cy - 3.0);
+            pb.line_to(ix - 3.0, cy + 3.0);
             if let Some(p) = pb.finish() {
-                let stroke = Stroke { width: 2.2, line_cap: LineCap::Round, ..Stroke::default() };
+                let stroke = Stroke { width: 2.0, line_cap: LineCap::Round, ..Stroke::default() };
                 pm.stroke_path(&p, &paint(Shader::SolidColor(Color::from_rgba8(11, 11, 16, 255))), &stroke, id, None);
             }
-            let shown = text.elide(&msg.to_lowercase(), 14.0, w - 70.0);
-            text.draw(pm, &shown, (x + 48.0) * s, cy * s, 14.0 * s, [0xED, 0xED, 0xF3, 255]);
+            let shown = text.elide(&msg.to_lowercase(), 13.0, w - 46.0);
+            text.draw(pm, &shown, (x + 32.0) * s, cy * s, 13.0 * s, [0xED, 0xED, 0xF3, 255]);
         }
-        Phase::Idle => {}
+        // Fading out after a dictation: the empty pill only.
+        Phase::Done(_) | Phase::Idle => {}
     }
 }
 

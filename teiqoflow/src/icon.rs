@@ -21,10 +21,6 @@ pub fn rounded_rect(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
     pb.finish()
 }
 
-pub fn gradient(x0: f32, y0: f32, x1: f32, y1: f32, alpha: f32) -> Shader<'static> {
-    gradient_between(ACCENT_1, ACCENT_2, x0, y0, x1, y1, alpha)
-}
-
 pub fn gradient_between(c0: (u8, u8, u8), c1: (u8, u8, u8), x0: f32, y0: f32, x1: f32, y1: f32, alpha: f32) -> Shader<'static> {
     let c = |(r, g, b): (u8, u8, u8)| Color::from_rgba8(r, g, b, (alpha * 255.0) as u8);
     LinearGradient::new(
@@ -46,10 +42,15 @@ pub fn paint(shader: Shader<'static>) -> Paint<'static> {
 
 /// The app logo: gradient squircle with a white waveform. Returns straight RGBA.
 pub fn app_icon_rgba(size: u32) -> Vec<u8> {
+    app_icon_rgba_with(size, ACCENT_1, ACCENT_2)
+}
+
+/// The app logo in the given gradient colours.
+pub fn app_icon_rgba_with(size: u32, c0: (u8, u8, u8), c1: (u8, u8, u8)) -> Vec<u8> {
     let mut pm = Pixmap::new(size, size).unwrap();
     let s = size as f32;
     if let Some(path) = rounded_rect(0.0, 0.0, s, s, s * 0.28) {
-        pm.fill_path(&path, &paint(gradient(0.0, 0.0, s, s, 1.0)), FillRule::Winding, Transform::identity(), None);
+        pm.fill_path(&path, &paint(gradient_between(c0, c1, 0.0, 0.0, s, s, 1.0)), FillRule::Winding, Transform::identity(), None);
     }
     let white = paint(Shader::SolidColor(Color::WHITE));
     let bars = [0.28, 0.55, 0.8, 0.5, 0.3];

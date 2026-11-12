@@ -27,11 +27,9 @@ pub struct App {
     shared: Arc<Shared>,
     engine: Sender<EngineMsg>,
     page: Page,
-    /// egui time of the last page switch, for the transition.
-    page_changed: f64,
     mics: Vec<String>,
     logo: egui::TextureHandle,
-    _tray: Option<tray_icon::TrayIcon>,
+    tray: Option<tray_icon::TrayIcon>,
 }
 
 impl App {
@@ -40,9 +38,23 @@ impl App {
         set_accent(&cfg.accent);
         set_light_theme(cfg.light_theme);
         setup_style(&cc.egui_ctx);
-        let rgba = crate::icon::app_icon_rgba(96);
-        let logo = cc.egui_ctx.load_texture("logo", egui::ColorImage::from_rgba_unmultiplied([96, 96], &rgba), egui::TextureOptions::LINEAR);
-        Self { shared, engine, page: Page::Home, page_changed: f64::NEG_INFINITY, mics: audio::list_microphones(), logo, _tray: tray }
+        let logo = cc.egui_ctx.load_texture("logo", egui::ColorImage::filled([1, 1], Color32::TRANSPARENT), egui::TextureOptions::LINEAR);
+        let mut app = Self { shared, engine, page: Page::Home, mics: audio::list_microphones(), logo, tray };
+        app.paint_logo(&cc.egui_ctx);
+        app
+    }
+
+    /// Redraws the logo, window icon and tray icon in the current accent colour.
+    fn paint_logo(&mut self, ctx: &egui::Context) {
+        let rgb = |c: Color32| (c.r(), c.g(), c.b());
+        let (c0, c1) = (rgb(accent_1()), rgb(accent_2()));
+        let rgba = crate::icon::app_icon_rgba_with(96, c0, c1);
+        self.logo.set(egui::ColorImage::from_rgba_unmultiplied([96, 96], &rgba), egui::TextureOptions::LINEAR);
+        let small = crate::icon::app_icon_rgba_with(64, c0, c1);
+        if let Some(tray) = &self.tray {
+            let _ = tray.set_icon(tray_icon::Icon::from_rgba(small.clone(), 64, 64).ok());
+        }
+        ctx.send_viewport_cmd(ViewportCommand::Icon(Some(Arc::new(egui::IconData { rgba: small, width: 64, height: 64 }))));
     }
 }
 
@@ -144,16 +156,7 @@ impl eframe::App for App {
 
         egui::CentralPanel::no_frame().show(ui, |ui| {
             self.titlebar(ui);
-            // New pages fade in and rise slightly.
-            let elapsed = (ui.input(|i| i.time) - self.page_changed) as f32;
-            let p = (elapsed / 0.22).clamp(0.0, 1.0);
-            let ease = 1.0 - (1.0 - p).powi(3);
-            if p < 1.0 {
-                ui.ctx().request_repaint();
-            }
             egui::ScrollArea::vertical().id_salt(self.page as u8).auto_shrink([false, false]).show(ui, |ui| {
-                ui.set_opacity(ease);
-                ui.add_space(12.0 * (1.0 - ease));
                 Frame::new().inner_margin(Margin { left: 28, right: 28, top: 0, bottom: 28 }).show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     match self.page {
@@ -222,22 +225,20 @@ impl App {
         for (page, icon, label) in pages {
             let selected = self.page == page;
             let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click());
-            let hover = ui.ctx().animate_bool(resp.id.with("hover"), resp.hovered() && !selected);
-            let sel = ui.ctx().animate_bool(resp.id.with("sel"), selected);
-            if hover > 0.0 || sel > 0.0 {
-                let fill = lerp_color(panel().gamma_multiply(hover), panel_2(), sel);
-                ui.painter().rect_filled(rect, 10.0, fill);
-            }
+            // Only the hover highlight fades; the selected entry switches instantly so nothing
+            // flickers when changing tabs, and the text never moves.
+            let hover = ui.ctx().animate_bool(resp.id.with("hover"), resp.hovered());
             if selected {
+                ui.painter().rect_filled(rect, 10.0, panel_2());
                 selected_y = Some(rect.top());
+            } else if hover > 0.0 {
+                ui.painter().rect_filled(rect, 10.0, panel().gamma_multiply(hover));
             }
-            let color = lerp_color(muted_color(), text_color(), hover.max(sel));
-            let nudge = 2.0 * hover;
-            ui.painter().text(rect.left_center() + vec2(16.0 + nudge, 0.0), egui::Align2::LEFT_CENTER, icon, FontId::proportional(16.0), color);
-            ui.painter().text(rect.left_center() + vec2(44.0 + nudge, 0.0), egui::Align2::LEFT_CENTER, label, semibold(14.0), color);
-            if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() && !selected {
+            let color = if selected { text_color() } else { lerp_color(muted_color(), text_color(), hover) };
+            ui.painter().text(rect.left_center() + vec2(16.0, 0.0), egui::Align2::LEFT_CENTER, icon, FontId::proportional(16.0), color);
+            ui.painter().text(rect.left_center() + vec2(44.0, 0.0), egui::Align2::LEFT_CENTER, label, semibold(14.0), color);
+            if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 self.page = page;
-                self.page_changed = ui.input(|i| i.time);
             }
         }
         // The accent bar glides to the selected entry.
@@ -426,6 +427,7 @@ impl App {
                         cfg.accent = id.to_string();
                         set_accent(id);
                         apply_visuals(ui.ctx());
+                        self.paint_logo(ui.ctx());
                     }
                 }
             });

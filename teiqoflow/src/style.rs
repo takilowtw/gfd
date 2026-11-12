@@ -3,14 +3,73 @@
 
 use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Mesh, Pos2, Rect, RichText, Sense, Stroke, Ui, pos2, vec2};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-pub const BG: Color32 = Color32::from_rgb(0x0B, 0x0B, 0x10);
-pub const PANEL: Color32 = Color32::from_rgb(0x14, 0x14, 0x1C);
-pub const PANEL_2: Color32 = Color32::from_rgb(0x1B, 0x1B, 0x26);
-pub const BORDER: Color32 = Color32::from_rgb(0x26, 0x26, 0x33);
-pub const TEXT: Color32 = Color32::from_rgb(0xED, 0xED, 0xF3);
-pub const MUTED: Color32 = Color32::from_rgb(0x8B, 0x8B, 0x9E);
+/// Base colours of one theme. The accent colour is chosen separately.
+pub struct Palette {
+    pub bg: Color32,
+    pub panel: Color32,
+    pub panel_2: Color32,
+    pub border: Color32,
+    pub text: Color32,
+    pub muted: Color32,
+    /// Darker edge under keycaps.
+    pub key_edge: Color32,
+}
+
+pub const DARK: Palette = Palette {
+    bg: Color32::from_rgb(0x0B, 0x0B, 0x10),
+    panel: Color32::from_rgb(0x14, 0x14, 0x1C),
+    panel_2: Color32::from_rgb(0x1B, 0x1B, 0x26),
+    border: Color32::from_rgb(0x26, 0x26, 0x33),
+    text: Color32::from_rgb(0xED, 0xED, 0xF3),
+    muted: Color32::from_rgb(0x8B, 0x8B, 0x9E),
+    key_edge: Color32::from_rgb(0x3A, 0x3A, 0x4D),
+};
+
+pub const LIGHT: Palette = Palette {
+    bg: Color32::from_rgb(0xF5, 0xF5, 0xF8),
+    panel: Color32::from_rgb(0xFF, 0xFF, 0xFF),
+    panel_2: Color32::from_rgb(0xEC, 0xEC, 0xF2),
+    border: Color32::from_rgb(0xDD, 0xDD, 0xE6),
+    text: Color32::from_rgb(0x16, 0x16, 0x1E),
+    muted: Color32::from_rgb(0x6A, 0x6A, 0x7C),
+    key_edge: Color32::from_rgb(0xC4, 0xC4, 0xD2),
+};
+
+static LIGHT_THEME: AtomicBool = AtomicBool::new(false);
+
+pub fn set_light_theme(light: bool) {
+    LIGHT_THEME.store(light, Ordering::Relaxed);
+}
+
+pub fn is_light_theme() -> bool {
+    LIGHT_THEME.load(Ordering::Relaxed)
+}
+
+pub fn palette() -> &'static Palette {
+    if is_light_theme() { &LIGHT } else { &DARK }
+}
+
+pub fn bg() -> Color32 {
+    palette().bg
+}
+pub fn panel() -> Color32 {
+    palette().panel
+}
+pub fn panel_2() -> Color32 {
+    palette().panel_2
+}
+pub fn border() -> Color32 {
+    palette().border
+}
+pub fn text_color() -> Color32 {
+    palette().text
+}
+pub fn muted_color() -> Color32 {
+    palette().muted
+}
+
 pub const OK: Color32 = Color32::from_rgb(0x3D, 0xDC, 0x97);
 pub const WARN: Color32 = Color32::from_rgb(0xFF, 0xB5, 0x47);
 pub const ERR: Color32 = Color32::from_rgb(0xFF, 0x5C, 0x70);
@@ -119,29 +178,29 @@ pub fn apply_visuals(ctx: &egui::Context) {
     style.text_styles.insert(egui::TextStyle::Body, FontId::proportional(14.5));
     style.text_styles.insert(egui::TextStyle::Button, semibold(14.0));
     let v = &mut style.visuals;
-    *v = egui::Visuals::dark();
+    *v = if is_light_theme() { egui::Visuals::light() } else { egui::Visuals::dark() };
     v.panel_fill = Color32::TRANSPARENT;
-    v.window_fill = PANEL_2;
-    v.window_stroke = Stroke::new(1.0, BORDER);
+    v.window_fill = panel_2();
+    v.window_stroke = Stroke::new(1.0, border());
     v.window_corner_radius = CornerRadius::same(12);
     v.menu_corner_radius = CornerRadius::same(12);
-    v.extreme_bg_color = PANEL_2;
-    v.override_text_color = Some(TEXT);
+    v.extreme_bg_color = panel_2();
+    v.override_text_color = Some(text_color());
     v.selection.bg_fill = accent_1();
-    v.selection.stroke = Stroke::new(1.0, TEXT);
+    v.selection.stroke = Stroke::new(1.0, text_color());
     v.hyperlink_color = accent_2();
     for w in [&mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.open] {
         w.corner_radius = CornerRadius::same(10);
-        w.bg_fill = PANEL_2;
-        w.weak_bg_fill = PANEL_2;
-        w.bg_stroke = Stroke::new(1.0, BORDER);
-        w.fg_stroke = Stroke::new(1.2, TEXT);
+        w.bg_fill = panel_2();
+        w.weak_bg_fill = panel_2();
+        w.bg_stroke = Stroke::new(1.0, border());
+        w.fg_stroke = Stroke::new(1.2, text_color());
     }
     v.widgets.hovered.bg_stroke = Stroke::new(1.0, accent_1());
     v.widgets.active.bg_stroke = Stroke::new(1.0, accent_2());
     v.widgets.open.bg_stroke = Stroke::new(1.0, accent_1());
-    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, BORDER);
-    v.widgets.noninteractive.fg_stroke = Stroke::new(1.0, TEXT);
+    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, border());
+    v.widgets.noninteractive.fg_stroke = Stroke::new(1.0, text_color());
     ctx.set_global_style(style);
 }
 
@@ -206,7 +265,7 @@ pub fn primary_button(ui: &mut Ui, text: &str) -> egui::Response {
 }
 
 pub fn ghost_button(ui: &mut Ui, text: &str) -> egui::Response {
-    ui.add(egui::Button::new(RichText::new(text).font(semibold(13.0))).fill(PANEL_2).corner_radius(10))
+    ui.add(egui::Button::new(RichText::new(text).font(semibold(13.0))).fill(panel_2()).corner_radius(10))
         .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
@@ -219,8 +278,8 @@ pub fn toggle(ui: &mut Ui, on: &mut bool) -> egui::Response {
     }
     let t = ui.ctx().animate_bool(resp.id, *on);
     let p = ui.painter();
-    p.rect_filled(rect, 13.0, PANEL_2);
-    p.rect_stroke(rect, 13.0, Stroke::new(1.0, BORDER), egui::StrokeKind::Inside);
+    p.rect_filled(rect, 13.0, panel_2());
+    p.rect_stroke(rect, 13.0, Stroke::new(1.0, border()), egui::StrokeKind::Inside);
     if t > 0.01 {
         let a = |c: Color32| Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), (t * 255.0) as u8);
         gradient_rect(ui, rect, 13.0, a(accent_1()), a(accent_2()));
@@ -234,12 +293,14 @@ pub fn toggle(ui: &mut Ui, on: &mut bool) -> egui::Response {
 pub fn window_background(ui: &Ui) {
     let ctx = ui.ctx();
     let full = ctx.content_rect();
-    ui.painter().rect(full, WINDOW_RADIUS, BG, Stroke::new(1.0, BORDER), egui::StrokeKind::Inside);
+    let ppp = ctx.pixels_per_point();
+    // The top pixel row is clipped away (see clip_window_corners), so start one pixel lower.
+    let shape = Rect::from_min_max(full.min + vec2(0.0, 1.0 / ppp), full.max);
+    ui.painter().rect(shape, WINDOW_RADIUS, bg(), Stroke::new(1.0, border()), egui::StrokeKind::Inside);
 
     // Re-clip whenever the physical size or scale changes.
-    let ppp = ctx.pixels_per_point();
     let key = [(full.width() * ppp).round(), (full.height() * ppp).round(), ppp];
-    let id = egui::Id::new("window_region");
+    let id = ui.make_persistent_id("window_region");
     if ctx.data(|d| d.get_temp::<[f32; 3]>(id)) != Some(key) && clip_window_corners(WINDOW_RADIUS * ppp) {
         ctx.data_mut(|d| d.insert_temp(id, key));
     }
@@ -248,13 +309,12 @@ pub fn window_background(ui: &Ui) {
 #[cfg(windows)]
 static HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
-/// Tells Windows not to round, outline or shadow the window itself: the app draws its own rounded
-/// edge. A second system outline made the corners look doubled, and the system shadow follows the
-/// square window bounds, leaving a visible notch behind each transparent corner.
+/// Tells Windows 11 not to round or outline the window itself: the app draws its own rounded
+/// edge, and a second system outline is what made the corners look doubled.
 #[cfg(windows)]
 pub fn disable_system_frame(title: &str) {
     use windows_sys::Win32::Graphics::Dwm::{
-        DWMNCRP_DISABLED, DWMWA_BORDER_COLOR, DWMWA_NCRENDERING_POLICY, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DwmSetWindowAttribute,
+        DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DwmSetWindowAttribute,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW;
     const DWMWA_COLOR_NONE: u32 = 0xFFFF_FFFE;
@@ -270,14 +330,13 @@ pub fn disable_system_frame(title: &str) {
         };
         set(DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND as u32);
         set(DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE);
-        set(DWMWA_NCRENDERING_POLICY, DWMNCRP_DISABLED as u32);
     }
 }
 
-/// Clips the window to a rounded shape. Windows 11 still draws a 1px frame line along the top of
-/// frameless windows, which showed as a square notch past the drawn corners; the region hides
-/// everything outside the rounded shape. Its radius is a little tighter than the drawn one so the
-/// anti-aliased edge pixels stay inside. Returns false until the window is known.
+/// Clips the window to a rounded shape that also leaves out the top pixel row. Windows draws a 1px
+/// frame line along the top of frameless windows, and a shadow around the square bounds; both
+/// showed past the drawn corners. The region's radius is a little tighter than the drawn one so
+/// the anti-aliased edge pixels stay inside. Returns false until the window is known.
 #[cfg(windows)]
 fn clip_window_corners(radius_px: f32) -> bool {
     use windows_sys::Win32::Foundation::RECT;
@@ -293,7 +352,7 @@ fn clip_window_corners(radius_px: f32) -> bool {
             return false;
         }
         let d = (radius_px * 2.0).round() as i32 - 2;
-        let rgn = CreateRoundRectRgn(0, 0, r.right - r.left + 1, r.bottom - r.top + 1, d, d);
+        let rgn = CreateRoundRectRgn(0, 1, r.right - r.left + 1, r.bottom - r.top + 1, d, d);
         if rgn.is_null() {
             return false;
         }

@@ -216,7 +216,7 @@ fn headline(ui: &mut Ui, upright: &str, italic: &str) {
 }
 
 fn muted(ui: &mut Ui, text: &str, size: f32) {
-    ui.add(egui::Label::new(RichText::new(text).size(size).color(MUTED)).wrap());
+    ui.add(egui::Label::new(RichText::new(text).size(size).color(muted_color())).wrap());
 }
 
 fn option_row(ui: &mut Ui, label: &str, value: &mut bool) {
@@ -230,7 +230,7 @@ fn option_row(ui: &mut Ui, label: &str, value: &mut bool) {
 
 fn progress_bar(ui: &mut Ui, fraction: f32) {
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 10.0), Sense::hover());
-    ui.painter().rect_filled(rect, 5.0, PANEL_2);
+    ui.painter().rect_filled(rect, 5.0, panel_2());
     let shown = ui.ctx().animate_value_with_time(ui.make_persistent_id("progress"), fraction.clamp(0.0, 1.0), 0.25);
     if shown > 0.0 {
         let fill = Rect::from_min_size(rect.min, vec2((rect.width() * shown).max(10.0), rect.height()));
@@ -253,7 +253,7 @@ fn status_badge(ui: &mut Ui, ok: bool) {
     let color = if ok { OK } else { ERR };
     ui.painter().circle_filled(c, 28.0, color.gamma_multiply(0.15));
     ui.painter().circle_filled(c, 20.0, color);
-    let stroke = Stroke::new(3.0, BG);
+    let stroke = Stroke::new(3.0, bg());
     if ok {
         ui.painter().line_segment([c + vec2(-8.0, 0.5), c + vec2(-2.5, 6.0)], stroke);
         ui.painter().line_segment([c + vec2(-2.5, 6.0), c + vec2(8.5, -6.0)], stroke);
@@ -301,7 +301,7 @@ impl eframe::App for Setup {
             if close_resp.hovered() {
                 ui.painter().rect_filled(close, 8.0, ERR);
             }
-            let color = if close_resp.hovered() { TEXT } else { MUTED };
+            let color = if close_resp.hovered() { text_color() } else { muted_color() };
             ui.painter().text(close.center(), egui::Align2::CENTER_CENTER, "✕", FontId::proportional(13.0), color);
             if close_resp.clicked() {
                 if self.step == Step::Removed {
@@ -322,7 +322,7 @@ impl eframe::App for Setup {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 ui.label(RichText::new("teiqoflow").font(semibold(18.0)));
                 let sub = if matches!(self.step, Step::Confirm | Step::Removing | Step::Removed) { "" } else { self.t("setup") };
-                ui.label(RichText::new(format!("{sub} · v{VERSION}").trim_start_matches(" · ").to_string()).size(12.5).color(MUTED));
+                ui.label(RichText::new(format!("{sub} · v{VERSION}").trim_start_matches(" · ").to_string()).size(12.5).color(muted_color()));
             });
         });
         ui.add_space(26.0);
@@ -412,15 +412,15 @@ impl Setup {
         muted(ui, self.t("intro"), 14.5);
         ui.add_space(22.0);
 
-        ui.label(RichText::new(self.t("install to")).size(12.5).color(MUTED));
+        ui.label(RichText::new(self.t("install to")).size(12.5).color(muted_color()));
         ui.horizontal(|ui| {
             let w = ui.available_width() - 110.0;
             let (rect, _) = ui.allocate_exact_size(vec2(w, 36.0), Sense::hover());
-            ui.painter().rect(rect, 10.0, PANEL_2, Stroke::new(1.0, BORDER), egui::StrokeKind::Inside);
+            ui.painter().rect(rect, 10.0, panel_2(), Stroke::new(1.0, border()), egui::StrokeKind::Inside);
             let path = self.dir.display().to_string();
-            let galley = ui.painter().layout(path, FontId::proportional(13.5), TEXT, w - 24.0);
+            let galley = ui.painter().layout(path, FontId::proportional(13.5), text_color(), w - 24.0);
             let row = galley.rows.first().map(|r| r.rect().height()).unwrap_or(16.0);
-            ui.painter().with_clip_rect(rect.shrink(4.0)).galley(pos2(rect.left() + 12.0, rect.center().y - row / 2.0), galley, TEXT);
+            ui.painter().with_clip_rect(rect.shrink(4.0)).galley(pos2(rect.left() + 12.0, rect.center().y - row / 2.0), galley, text_color());
             if ghost_button(ui, self.t("change")).clicked() {
                 if let Some(picked) = rfd::FileDialog::new().set_directory(&self.dir).pick_folder() {
                     let ends_with_app = picked.file_name().map(|n| n.eq_ignore_ascii_case(sys::APP)).unwrap_or(false);

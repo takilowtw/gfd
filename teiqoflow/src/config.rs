@@ -36,6 +36,7 @@ pub struct Config {
     pub sounds: bool,
     /// Id from `style::ACCENTS`.
     pub accent: String,
+    pub light_theme: bool,
     pub history: Vec<HistoryItem>,
 }
 
@@ -62,6 +63,7 @@ impl Default for Config {
             restore_clipboard: true,
             sounds: true,
             accent: "blue".into(),
+            light_theme: false,
             history: Vec::new(),
         }
     }

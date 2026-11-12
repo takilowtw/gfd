@@ -27,6 +27,8 @@ pub struct App {
     shared: Arc<Shared>,
     engine: Sender<EngineMsg>,
     page: Page,
+    /// egui time of the last page switch, for the transition.
+    page_changed: f64,
     mics: Vec<String>,
     logo: egui::TextureHandle,
     _tray: Option<tray_icon::TrayIcon>,
@@ -34,11 +36,13 @@ pub struct App {
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, shared: Arc<Shared>, engine: Sender<EngineMsg>, tray: Option<tray_icon::TrayIcon>) -> Self {
-        set_accent(&shared.cfg().accent);
+        let cfg = shared.cfg();
+        set_accent(&cfg.accent);
+        set_light_theme(cfg.light_theme);
         setup_style(&cc.egui_ctx);
         let rgba = crate::icon::app_icon_rgba(96);
         let logo = cc.egui_ctx.load_texture("logo", egui::ColorImage::from_rgba_unmultiplied([96, 96], &rgba), egui::TextureOptions::LINEAR);
-        Self { shared, engine, page: Page::Home, mics: audio::list_microphones(), logo, _tray: tray }
+        Self { shared, engine, page: Page::Home, page_changed: f64::NEG_INFINITY, mics: audio::list_microphones(), logo, _tray: tray }
     }
 }
 
@@ -46,8 +50,8 @@ impl App {
 
 fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     Frame::new()
-        .fill(PANEL)
-        .stroke(Stroke::new(1.0, BORDER))
+        .fill(panel())
+        .stroke(Stroke::new(1.0, border()))
         .corner_radius(CornerRadius::same(16))
         .inner_margin(Margin::same(20))
         .show(ui, |ui| {
@@ -58,23 +62,23 @@ fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 }
 
 fn caption(ui: &mut Ui, text: &str) {
-    ui.label(RichText::new(text.to_lowercase()).font(semibold(11.0)).color(MUTED).extra_letter_spacing(1.0));
+    ui.label(RichText::new(text.to_lowercase()).font(semibold(11.0)).color(muted_color()).extra_letter_spacing(1.0));
 }
 
 fn muted(ui: &mut Ui, text: &str) {
-    ui.add(egui::Label::new(RichText::new(text).size(13.0).color(MUTED)).wrap());
+    ui.add(egui::Label::new(RichText::new(text).size(13.0).color(muted_color())).wrap());
 }
 
 fn keycap(ui: &mut Ui, text: &str, size: f32) {
-    let galley = ui.painter().layout_no_wrap(text.to_string(), semibold(size), TEXT);
+    let galley = ui.painter().layout_no_wrap(text.to_string(), semibold(size), text_color());
     let pad = vec2(14.0, 7.0);
     let (rect, _) = ui.allocate_exact_size(galley.size() + pad * 2.0 + vec2(0.0, 3.0), Sense::hover());
     let p = ui.painter();
-    p.rect_filled(rect, 9.0, Color32::from_rgb(0x3A, 0x3A, 0x4D));
+    p.rect_filled(rect, 9.0, palette().key_edge);
     let top = Rect::from_min_max(rect.min, rect.max - vec2(0.0, 3.0));
-    p.rect_filled(top, 9.0, PANEL_2);
-    p.rect_stroke(top, 9.0, Stroke::new(1.0, Color32::from_rgb(0x3A, 0x3A, 0x4D)), egui::StrokeKind::Inside);
-    p.galley(top.min + pad, galley, TEXT);
+    p.rect_filled(top, 9.0, panel_2());
+    p.rect_stroke(top, 9.0, Stroke::new(1.0, palette().key_edge), egui::StrokeKind::Inside);
+    p.galley(top.min + pad, galley, text_color());
 }
 
 
@@ -136,11 +140,20 @@ impl eframe::App for App {
 
         // Divider between sidebar and content.
         let x = full.left() + 220.0;
-        ui.painter().vline(x, full.y_range().shrink(1.0), Stroke::new(1.0, BORDER));
+        ui.painter().vline(x, full.y_range().shrink(1.0), Stroke::new(1.0, border()));
 
         egui::CentralPanel::no_frame().show(ui, |ui| {
             self.titlebar(ui);
-            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+            // New pages fade in and rise slightly.
+            let elapsed = (ui.input(|i| i.time) - self.page_changed) as f32;
+            let p = (elapsed / 0.22).clamp(0.0, 1.0);
+            let ease = 1.0 - (1.0 - p).powi(3);
+            if p < 1.0 {
+                ui.ctx().request_repaint();
+            }
+            egui::ScrollArea::vertical().id_salt(self.page as u8).auto_shrink([false, false]).show(ui, |ui| {
+                ui.set_opacity(ease);
+                ui.add_space(12.0 * (1.0 - ease));
                 Frame::new().inner_margin(Margin { left: 28, right: 28, top: 0, bottom: 28 }).show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     match self.page {
@@ -182,17 +195,18 @@ impl App {
         let btn = |ui: &mut Ui, x: f32, label: &str, hover: Color32| -> bool {
             let r = Rect::from_center_size(pos2(x, rect.center().y), vec2(36.0, 28.0));
             let resp = ui.interact(r, ui.make_persistent_id(label), Sense::click());
-            if resp.hovered() {
-                ui.painter().rect_filled(r, 8.0, hover);
+            let k = ui.ctx().animate_bool(resp.id.with("hover"), resp.hovered());
+            if k > 0.0 {
+                ui.painter().rect_filled(r, 8.0, hover.gamma_multiply(k));
             }
-            let color = if resp.hovered() { TEXT } else { MUTED };
+            let color = lerp_color(muted_color(), text_color(), k);
             ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, label, FontId::proportional(14.0), color);
             resp.clicked()
         };
         if btn(ui, rect.right() - 26.0, "✕", ERR) {
             ui.ctx().send_viewport_cmd(ViewportCommand::Visible(false));
         }
-        if btn(ui, rect.right() - 66.0, "—", PANEL_2) {
+        if btn(ui, rect.right() - 66.0, "—", panel_2()) {
             ui.ctx().send_viewport_cmd(ViewportCommand::Minimized(true));
         }
     }
@@ -203,22 +217,34 @@ impl App {
             ui.label(RichText::new("teiqoflow").font(semibold(19.0)));
         });
         ui.add_space(26.0);
-        for (page, icon, label) in [(Page::Home, "⌂", t("Home")), (Page::History, "☰", t("History")), (Page::Settings, "⚙", t("Settings"))] {
+        let pages = [(Page::Home, "⌂", t("Home")), (Page::History, "☰", t("History")), (Page::Settings, "⚙", t("Settings"))];
+        let mut selected_y = None;
+        for (page, icon, label) in pages {
             let selected = self.page == page;
             let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click());
-            if selected || resp.hovered() {
-                ui.painter().rect_filled(rect, 10.0, if selected { PANEL_2 } else { PANEL });
+            let hover = ui.ctx().animate_bool(resp.id.with("hover"), resp.hovered() && !selected);
+            let sel = ui.ctx().animate_bool(resp.id.with("sel"), selected);
+            if hover > 0.0 || sel > 0.0 {
+                let fill = lerp_color(panel().gamma_multiply(hover), panel_2(), sel);
+                ui.painter().rect_filled(rect, 10.0, fill);
             }
             if selected {
-                let bar = Rect::from_min_size(rect.left_top() + vec2(0.0, 10.0), vec2(3.0, 20.0));
-                gradient_rect(ui, bar, 1.5, accent_1(), accent_2());
+                selected_y = Some(rect.top());
             }
-            let color = if selected || resp.hovered() { TEXT } else { MUTED };
-            ui.painter().text(rect.left_center() + vec2(16.0, 0.0), egui::Align2::LEFT_CENTER, icon, FontId::proportional(16.0), color);
-            ui.painter().text(rect.left_center() + vec2(44.0, 0.0), egui::Align2::LEFT_CENTER, label, semibold(14.0), color);
-            if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+            let color = lerp_color(muted_color(), text_color(), hover.max(sel));
+            let nudge = 2.0 * hover;
+            ui.painter().text(rect.left_center() + vec2(16.0 + nudge, 0.0), egui::Align2::LEFT_CENTER, icon, FontId::proportional(16.0), color);
+            ui.painter().text(rect.left_center() + vec2(44.0 + nudge, 0.0), egui::Align2::LEFT_CENTER, label, semibold(14.0), color);
+            if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() && !selected {
                 self.page = page;
+                self.page_changed = ui.input(|i| i.time);
             }
+        }
+        // The accent bar glides to the selected entry.
+        if let Some(y) = selected_y {
+            let y = ui.ctx().animate_value_with_time(ui.make_persistent_id("nav_bar_y"), y, 0.18);
+            let bar = Rect::from_min_size(pos2(ui.min_rect().left(), y + 10.0), vec2(3.0, 20.0));
+            gradient_rect(ui, bar, 1.5, accent_1(), accent_2());
         }
 
         // Pin the status card to the bottom using its height from the previous frame.
@@ -227,8 +253,8 @@ impl App {
         ui.add_space((ui.available_height() - last_h).max(0.0));
         let (text, level) = self.shared.status();
         let card = Frame::new()
-            .fill(PANEL)
-            .stroke(Stroke::new(1.0, BORDER))
+            .fill(panel())
+            .stroke(Stroke::new(1.0, border()))
             .corner_radius(CornerRadius::same(12))
             .inner_margin(Margin::same(12))
             .show(ui, |ui| {
@@ -242,7 +268,7 @@ impl App {
                         StatusLevel::Error => ERR,
                     };
                     ui.label(RichText::new("●").color(color).size(11.0));
-                    ui.add(egui::Label::new(RichText::new(text.to_lowercase()).size(12.5).color(MUTED)).wrap());
+                    ui.add(egui::Label::new(RichText::new(text.to_lowercase()).size(12.5).color(muted_color())).wrap());
                 });
             });
         let h = card.response.rect.height();
@@ -256,8 +282,8 @@ impl App {
         // Hero card, tinted with the accent colour.
         let hero_h = 150.0;
         let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), hero_h), Sense::hover());
-        gradient_rect(ui, rect, 20.0, lerp_color(BG, accent_1(), 0.25), lerp_color(BG, accent_2(), 0.2));
-        ui.painter().rect_stroke(rect, 20.0, Stroke::new(1.0, lerp_color(BG, accent_1(), 0.45)), egui::StrokeKind::Inside);
+        gradient_rect(ui, rect, 20.0, lerp_color(bg(), accent_1(), 0.25), lerp_color(bg(), accent_2(), 0.2));
+        ui.painter().rect_stroke(rect, 20.0, Stroke::new(1.0, lerp_color(bg(), accent_1(), 0.45)), egui::StrokeKind::Inside);
         let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(28.0, 24.0))).layout(Layout::top_down(Align::Min)));
         caption(&mut inner, t("Push to talk"));
         inner.horizontal(|ui| {
@@ -373,16 +399,29 @@ impl App {
                 combo(ui, "ui_lang", 200.0, &mut cfg.ui_lang, &opts);
             });
             ui.add_space(4.0);
+            setting_row(ui, t("Theme"), "", |ui| {
+                let opts = vec![(false, t("Dark").to_string()), (true, t("Light").to_string())];
+                let before = cfg.light_theme;
+                combo(ui, "theme", 200.0, &mut cfg.light_theme, &opts);
+                if cfg.light_theme != before {
+                    set_light_theme(cfg.light_theme);
+                    apply_visuals(ui.ctx());
+                }
+            });
+            ui.add_space(4.0);
             setting_row(ui, t("Accent color"), "", |ui| {
                 // Right-to-left layout, so iterate in reverse to keep the preset order.
                 for &(id, name, c0, c1) in ACCENTS.iter().rev() {
                     let (rect, resp) = ui.allocate_exact_size(vec2(28.0, 28.0), Sense::click());
                     let selected = cfg.accent == id;
-                    if selected || resp.hovered() {
-                        let ring = if selected { TEXT } else { MUTED };
-                        ui.painter().circle_stroke(rect.center(), 13.0, Stroke::new(1.5, ring));
+                    let hover = ui.ctx().animate_bool(resp.id.with("hover"), resp.hovered());
+                    let sel = ui.ctx().animate_bool(resp.id.with("sel"), selected);
+                    let ring = sel.max(hover * 0.6);
+                    if ring > 0.01 {
+                        let color = lerp_color(muted_color(), text_color(), sel).gamma_multiply(ring);
+                        ui.painter().circle_stroke(rect.center(), 11.0 + 2.0 * ring, Stroke::new(1.5, color));
                     }
-                    gradient_rect(ui, rect.shrink(4.0), 10.0, c0, c1);
+                    gradient_rect(ui, rect.shrink(4.0 + 1.0 * (1.0 - hover.max(sel))), 10.0, c0, c1);
                     if resp.on_hover_text(t(name)).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() && !selected {
                         cfg.accent = id.to_string();
                         set_accent(id);
